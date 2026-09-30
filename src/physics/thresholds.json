@@ -1,0 +1,117 @@
+{
+  "about": "Single place to tune the Prototype 1 habitability model (owner: Agent 5). Every numeric value carries a `source` and a `status` (\"cited\" or \"needs human verification\"). These are MODEL thresholds, not biological facts: passing them does not mean a planet has life.",
+  "rules": {
+    "checks": "Five independent checks (DESIGN.md §18). Critical: temperature, liquidWater. Supporting: pressure, irradiation, tidal. Each check is pass (true), fail (false), or cannot-evaluate (null).",
+    "highlyHabitable": "Every evaluable check passes AND no critical check is null (supporting checks may be null).",
+    "uninhabitable": "(liquidWater fails AND surface temperature is outside the EXTENDED temperature range) OR the water phase is 'no-liquid-below-triple-point'.",
+    "marginallyHabitable": "Everything else.",
+    "confidence": "Start 'high'. Drop to 'medium' if the atmosphere is user-assumed, any supporting check is null, or the star's Teff was clamped into the Kopparapu validity range. Drop to 'low' if any critical check is null or a mass/radius/eccentricity/orbit-type catalog field is missing (see confidence.lowConfidenceMissingFieldPatterns). 'low' wins over 'medium'."
+  },
+  "temperature": {
+    "preferred": {
+      "min": 273.15,
+      "max": 323.15,
+      "unit": "K",
+      "note": "0–50 °C. Lower bound = freezing point of pure water at 1 atm. Upper bound ≈ commonly quoted thermal limit for complex (eukaryotic) surface life; animals and plants rarely grow above ~50 °C.",
+      "source": "Lower: freezing point of water at 1 atm (IAPWS). Upper: approximate complex-life thermal ceiling (e.g. Tansey & Brock 1972, PNAS 69, 2426 put eukaryotes at ≲60 °C; 50 °C chosen as a conservative model value).",
+      "status": "needs human verification"
+    },
+    "extended": {
+      "min": 253.15,
+      "max": 373.15,
+      "unit": "K",
+      "note": "−20 °C to 100 °C. Used only to decide how badly the temperature check fails (and for the Uninhabitable rule). Lower bound ≈ the lowest temperature at which known cells still grow and divide. Upper bound = boiling point of water at 1 atm (model choice; some microbes grow even hotter, see knownLifeUpperLimit).",
+      "source": "Lower: Clarke et al. 2013, PLoS ONE 8, e66207 ('A low temperature limit for life on Earth', ~−20 °C). Upper: boiling point of water at 1 atm (IAPWS).",
+      "status": "cited"
+    },
+    "knownLifeUpperLimit": {
+      "value": 395.15,
+      "unit": "K",
+      "note": "122 °C — highest temperature at which any organism has been shown to multiply (only at high pressure). Shown in reason text for context; not a pass/fail boundary.",
+      "source": "Takai et al. 2008, PNAS 105, 10949 (Methanopyrus kandleri strain 116 proliferated at 122 °C under 20–40 MPa).",
+      "status": "cited"
+    }
+  },
+  "liquidWater": {
+    "note": "Pass iff the water-phase model (src/physics/water.ts) returns 'liquid'. No numeric threshold here; phase boundaries live in water.ts."
+  },
+  "pressure": {
+    "preferred": {
+      "min": 0.1,
+      "max": 10,
+      "unit": "bar",
+      "note": "Model choice. 0.1 bar is ~16× water's triple-point pressure (0.00611657 bar), so a usable liquid range exists (water boils near ~46 °C at 0.1 bar). 10 bar is a model ceiling: much thicker atmospheres tend to trap heat strongly and are less Earth-like (Venus ≈ 92 bar). Life itself tolerates far higher pressures in Earth's deep ocean (>1000 bar), so this is not a biological limit.",
+      "source": "Model choice by Agent 5; lower bound constrained by the water triple point (IAPWS, 611.657 Pa).",
+      "status": "needs human verification"
+    }
+  },
+  "irradiation": {
+    "note": "Star-aware habitable-zone limits in units of Earth's insolation: S_eff = S_eff⊙ + a·T + b·T² + c·T³ + d·T⁴, T = Teff − 5780 K. Pass range = [Early Mars, Recent Venus] (optimistic HZ). Conservative range [Maximum Greenhouse, Runaway Greenhouse 1 M⊕] is reported in the reason text.",
+    "teffOffset": {
+      "value": 5780,
+      "unit": "K",
+      "source": "Kopparapu et al. 2014, ApJL 787, L29, eq. 4 (T⋆ = Teff − 5780 K).",
+      "status": "cited"
+    },
+    "teffValidRange": {
+      "min": 2600,
+      "max": 7200,
+      "unit": "K",
+      "source": "Kopparapu et al. 2014, ApJL 787, L29 (fits valid for 2600 K ≤ Teff ≤ 7200 K).",
+      "status": "cited"
+    },
+    "recentVenus": {
+      "role": "inner edge, optimistic (pass limit)",
+      "SeffSun": 1.776,
+      "a": 2.136e-4,
+      "b": 2.533e-8,
+      "c": -1.332e-11,
+      "d": -3.097e-15,
+      "source": "Kopparapu et al. 2014, ApJL 787, L29, Table 1 (arXiv:1404.5292), 'Recent Venus'. Verified against the arXiv table.",
+      "status": "cited"
+    },
+    "runawayGreenhouse1Me": {
+      "role": "inner edge, conservative (reason text only)",
+      "SeffSun": 1.107,
+      "a": 1.332e-4,
+      "b": 1.58e-8,
+      "c": -8.308e-12,
+      "d": -1.931e-15,
+      "source": "Kopparapu et al. 2014, ApJL 787, L29, Table 1 (arXiv:1404.5292), 'Runaway Greenhouse (1 M⊕)'. Verified against the arXiv table.",
+      "status": "cited"
+    },
+    "maximumGreenhouse": {
+      "role": "outer edge, conservative (reason text only)",
+      "SeffSun": 0.356,
+      "a": 6.171e-5,
+      "b": 1.698e-9,
+      "c": -3.198e-12,
+      "d": -5.575e-16,
+      "source": "Kopparapu et al. 2014, ApJL 787, L29, Table 1 (arXiv:1404.5292), 'Maximum Greenhouse'. Verified against the arXiv table.",
+      "status": "cited"
+    },
+    "earlyMars": {
+      "role": "outer edge, optimistic (pass limit)",
+      "SeffSun": 0.32,
+      "a": 5.547e-5,
+      "b": 1.526e-9,
+      "c": -2.874e-12,
+      "d": -5.011e-16,
+      "source": "Kopparapu et al. 2014, ApJL 787, L29, Table 1 (arXiv:1404.5292), 'Early Mars'. Verified against the arXiv table.",
+      "status": "cited"
+    }
+  },
+  "tidal": {
+    "extremeStellarTideRelEarth": {
+      "value": 10000,
+      "unit": "× Sun's tide on Earth",
+      "note": "Above this, stellar tidal stress is flagged as extreme (strong tidal heating / volcanism risk). Model choice.",
+      "source": "Model choice by Agent 5; no single literature threshold.",
+      "status": "needs human verification"
+    }
+  },
+  "confidence": {
+    "lowConfidenceMissingFieldPatterns": ["masse", "mass", "rade", "radius", "eccen", "ecc", "orbsmax", "semi"],
+    "note": "A catalog field in inputs.missing whose lower-cased name contains any of these substrings lowers confidence to 'low' (mass, radius, eccentricity, semi-major axis). Other missing fields (e.g. st_age, st_spectype) do not."
+  }
+}
