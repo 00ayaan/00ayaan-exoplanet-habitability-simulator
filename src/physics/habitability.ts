@@ -14,8 +14,12 @@
  *
  * Classification rule (also in thresholds.json "rules"):
  *  - **Highly Habitable**: every evaluable check passes AND no critical check is null.
- *  - **Uninhabitable**: (liquidWater fails AND T is outside the EXTENDED range 253.15–373.15 K)
- *    OR waterPhase is 'no-liquid-below-triple-point'.
+ *  - **Uninhabitable**: any of
+ *      (a) waterPhase is 'no-liquid-below-triple-point';
+ *      (b) liquidWater fails AND T is outside the EXTENDED range 253.15–373.15 K;
+ *      (c) BOTH critical checks (temperature, liquidWater) fail AND irradiation fails — the planet is
+ *          strongly inconsistent with the habitable ranges on several independent axes (e.g. a
+ *          Venus-like planet whose one-layer model temperature lands just below freezing).
  *  - otherwise **Marginally Habitable**.
  *
  * Confidence: start 'high'; 'medium' if the atmosphere is user-assumed, any supporting check is
@@ -42,7 +46,7 @@ import type {
 
 /** Inputs to {@link classifyHabitability} (frozen in AGENTS.md). */
 export interface HabitabilityInputs {
-  /** Modeled surface temperature [K], finite and > 0. */
+  /** Modeled surface temperature [K], finite and ≥ 0 (0 K occurs for albedo = 1). */
   surfaceTemp_K: number;
   /** Water phase from `waterPhase()` (water.ts). */
   waterPhase: WaterPhase;
@@ -403,10 +407,21 @@ const DISCLAIMERS: Record<HabitabilityStatus, string> = {
  * Combine evaluated checks into a status, confidence and disclaimer. Pure.
  *
  * Status rule:
- *  - Uninhabitable if ctx.belowTriplePoint, or (liquidWater check fails AND ctx.tempOutsideExtended).
+ *  - Uninhabitable if (a) ctx.belowTriplePoint, or (b) the liquidWater check fails AND
+ *    ctx.tempOutsideExtended, or (c) the temperature, liquidWater AND irradiation checks all fail.
  *  - Highly Habitable if every non-null check passes AND no critical check is null.
  *  - Marginally Habitable otherwise.
- * Confidence rule: see module header.
+ * Confidence rule: see module header ('low' > 'medium' > 'high').
+ *
+ * Units: none — inputs are already-evaluated checks (booleans/null with display strings) and
+ * boolean context flags; `ctx.missing` holds catalog field names. Output is categorical.
+ *
+ * Assumptions: checks are independent; a null (`cannot evaluate`) check is never treated as a
+ * pass or a fail; a failed check absent from `checks` is simply not considered. The labels are
+ * model-defined and never evidence that life exists.
+ *
+ * Valid range: any set of 0–5 checks with unique ids; intended for the five CheckIds produced by
+ * {@link classifyHabitability}.
  *
  * @param checks Evaluated checks (any order).
  * @param ctx    Context flags (see {@link CombineContext}).
@@ -419,11 +434,19 @@ export function combineChecks(
 ): HabitabilityResult {
   const byId = new Map<CheckId, HabitabilityCheck>(checks.map((c) => [c.id, c]));
   const liquid = byId.get('liquidWater');
+  const temperature = byId.get('temperature');
+  const irradiation = byId.get('irradiation');
+  const multiAxisFailure =
+    temperature?.passed === false && liquid?.passed === false && irradiation?.passed === false;
   const criticalNull = checks.filter((c) => c.weight === 'critical' && c.passed === null);
   const supportingNull = checks.filter((c) => c.weight === 'supporting' && c.passed === null);
 
   let status: HabitabilityStatus;
-  if (ctx.belowTriplePoint || (liquid?.passed === false && ctx.tempOutsideExtended === true)) {
+  if (
+    ctx.belowTriplePoint ||
+    (liquid?.passed === false && ctx.tempOutsideExtended === true) ||
+    multiAxisFailure
+  ) {
     status = 'Uninhabitable';
   } else if (checks.every((c) => c.passed !== false) && criticalNull.length === 0) {
     status = 'Highly Habitable';
@@ -447,7 +470,9 @@ export function combineChecks(
   }
   if (ctx.atmosphereAssumed) {
     medium = true;
-    reasons.push('Atmosphere is user-assumed, not measured (pressure and greenhouse strength come from sliders).');
+    reasons.push(
+      'Atmosphere is user-assumed, not measured (pressure and greenhouse strength come from sliders) — Prototype 1 confidence is at most medium.',
+    );
   }
   if (supportingNull.length > 0) {
     medium = true;
@@ -477,13 +502,15 @@ export function combineChecks(
  * the source/status of each number); biological habitability is NOT predicted.
  * Valid range: any physical inputs; habitable-zone limits valid for 2600–7200 K (clamped outside).
  *
- * @throws RangeError on non-finite numbers, T ≤ 0 K, P < 0, S < 0, Teff ≤ 0 or a negative tide.
+ * @throws RangeError on non-finite numbers, T < 0 K, P < 0, S < 0, Teff ≤ 0 or a negative tide.
+ *   (T = 0 K is accepted: it is what the equilibrium model returns for albedo = 1.)
  */
 export function classifyHabitability(
   inputs: HabitabilityInputs,
   thresholds: Readonly<Thresholds> = DEFAULT_THRESHOLDS,
 ): HabitabilityResult {
-  requireFinite('surfaceTemp_K', inputs.surfaceTemp_K, { positive: true });
+  // 0 K is a legitimate model output (e.g. albedo = 1 → no absorbed starlight), so only negatives are rejected.
+  requireFinite('surfaceTemp_K', inputs.surfaceTemp_K, { nonNegative: true });
   requireFinite('surfacePressure_bar', inputs.surfacePressure_bar, { nonNegative: true });
   requireFinite('insolation_Searth', inputs.insolation_Searth, { nonNegative: true });
   requireFinite('starTeff_K', inputs.starTeff_K, { positive: true });

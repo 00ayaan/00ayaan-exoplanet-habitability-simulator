@@ -35,6 +35,7 @@ describe('classifyHabitability — reference planets', () => {
     expect(r.checks.every((c) => c.passed === true)).toBe(true);
     expect(r.confidence).toBe('medium');
     expect(r.confidenceReasons.join(' ')).toMatch(/user-assumed/);
+    expect(r.confidenceReasons.join(' ')).toMatch(/Prototype 1 confidence is at most medium/);
     expect(r.disclaimer).toMatch(/not evidence that this planet contains life/);
     expect(check(r, 'temperature').observed).toBe('288 K (15 °C)');
     expect(check(r, 'temperature').target).toBe('273–323 K (0–50 °C)');
@@ -76,6 +77,41 @@ describe('classifyHabitability — reference planets', () => {
     expect(r.status).toBe('Uninhabitable');
     expect(check(r, 'liquidWater').reason).toMatch(/pressure is too low/);
     expect(check(r, 'irradiation').passed).toBe(true); // Mars is inside the optimistic HZ
+  });
+
+  it('Venus-like slider inputs (one-layer model caps T_s near freezing, 92 bar, S≈1.91) → Uninhabitable', () => {
+    // Repro from validation: G preset, a = 0.7233 AU, albedo 0.76, 92 bar, greenhouse 1 → T_s ≈ 259–272 K.
+    for (const T of [259, 265, 272]) {
+      const r = classifyHabitability({
+        ...earth,
+        surfaceTemp_K: T,
+        waterPhase: 'ice',
+        surfacePressure_bar: 92,
+        insolation_Searth: 1.91,
+      });
+      expect(check(r, 'temperature').passed).toBe(false);
+      expect(check(r, 'liquidWater').passed).toBe(false);
+      expect(check(r, 'irradiation').passed).toBe(false);
+      expect(r.status).toBe('Uninhabitable');
+    }
+  });
+
+  it('cold ice at 265 K with Earth-like starlight (S = 1) stays Marginal (irradiation passes)', () => {
+    const r = classifyHabitability({ ...earth, surfaceTemp_K: 265, waterPhase: 'ice', insolation_Searth: 1 });
+    expect(r.status).toBe('Marginally Habitable');
+  });
+
+  it('multi-axis rule needs all three: temperature + liquidWater + irradiation failing', () => {
+    // Too little starlight but liquid water and good temperature → Marginal, not Uninhabitable.
+    expect(classifyHabitability({ ...earth, insolation_Searth: 0.1 }).status).toBe('Marginally Habitable');
+    // Temperature and water fail inside extended range but irradiation OK → Marginal.
+    expect(classifyHabitability({ ...earth, surfaceTemp_K: 260, waterPhase: 'ice' }).status).toBe('Marginally Habitable');
+  });
+
+  it('accepts 0 K (albedo = 1 model output) and classifies it Uninhabitable', () => {
+    const r = classifyHabitability({ ...earth, surfaceTemp_K: 0, waterPhase: 'ice' });
+    expect(r.status).toBe('Uninhabitable');
+    expect(check(r, 'temperature').observed).toBe('0 K (-273 °C)');
   });
 
   it('below-triple-point alone forces Uninhabitable even at a mild temperature', () => {
@@ -230,7 +266,7 @@ describe('purity and validation', () => {
   it.each([
     ['surfaceTemp_K', NaN],
     ['surfaceTemp_K', Infinity],
-    ['surfaceTemp_K', 0],
+    ['surfaceTemp_K', -1],
     ['surfacePressure_bar', NaN],
     ['surfacePressure_bar', -1],
     ['insolation_Searth', Infinity],

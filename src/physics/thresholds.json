@@ -3,7 +3,7 @@
   "rules": {
     "checks": "Five independent checks (DESIGN.md §18). Critical: temperature, liquidWater. Supporting: pressure, irradiation, tidal. Each check is pass (true), fail (false), or cannot-evaluate (null).",
     "highlyHabitable": "Every evaluable check passes AND no critical check is null (supporting checks may be null).",
-    "uninhabitable": "(liquidWater fails AND surface temperature is outside the EXTENDED temperature range) OR the water phase is 'no-liquid-below-triple-point'.",
+    "uninhabitable": "Any of: (a) the water phase is 'no-liquid-below-triple-point'; (b) liquidWater fails AND surface temperature is outside the EXTENDED temperature range; (c) BOTH critical checks (temperature, liquidWater) fail AND irradiation fails — strongly inconsistent with the habitable ranges on several independent axes (e.g. Venus-like insolation where the one-layer model puts the surface just below freezing).",
     "marginallyHabitable": "Everything else.",
     "confidence": "Start 'high'. Drop to 'medium' if the atmosphere is user-assumed, any supporting check is null, or the star's Teff was clamped into the Kopparapu validity range. Drop to 'low' if any critical check is null or a mass/radius/eccentricity/orbit-type catalog field is missing (see confidence.lowConfidenceMissingFieldPatterns). 'low' wins over 'medium'."
   },

@@ -5,10 +5,14 @@
  * (DESIGN.md §15):  a_tide ≈ 2 G M R_p / r³ , valid for R_p ≪ r.
  *
  * The tidal-locking indicator is QUALITATIVE (DESIGN.md §17). It bins an
- * order-of-magnitude despinning timescale (Gladman et al. 1996, Icarus 122, 166,
- * eq. 9; the same form is used by e.g. Barnes 2017, Celest. Mech. Dyn. Astron. 129, 509):
+ * order-of-magnitude despinning timescale after Gladman et al. 1996 (Icarus 122, 166), written in
+ * the commonly used Love-number (k₂) form rather than Gladman's rigidity (μ) form
+ * (see also Barnes 2017, Celest. Mech. Dyn. Astron. 129, 509):
  *
  *     t_lock ≈ ω₀ a⁶ I Q / (3 G M★² k₂ R_p⁵),   I = α M_p R_p²
+ *
+ * Q = 100 and k₂ = 0.3 are typical ASSUMED rocky-planet values from the wider literature, not
+ * values taken from Gladman et al. — needs human verification.
  *
  * The timescale itself is never returned — only a category — because Q and k₂
  * are unknown for exoplanets and the estimate is uncertain by a factor ~100 or more.
@@ -123,9 +127,9 @@ export function moonTide(moon: MoonSpec, planetRadius_m: number | null): Result<
 // Tidal locking (qualitative)
 // ---------------------------------------------------------------------------
 
-/** Assumed tidal dissipation factor Q (Gladman et al. 1996 use Q ≈ 100 for rocky bodies). */
+/** Assumed tidal dissipation factor Q: typical assumed rocky-planet value — needs human verification. */
 const ASSUMED_Q = 100;
-/** Assumed Love number k₂ (Gladman et al. 1996 rocky-body value ≈ 0.3). */
+/** Assumed Love number k₂: typical assumed rocky-planet value — needs human verification. */
 const ASSUMED_K2 = 0.3;
 /** Assumed moment-of-inertia coefficient α in I = α M R² (Earth ≈ 0.33). */
 const ASSUMED_ALPHA = 0.33;
@@ -138,7 +142,7 @@ const LIKELY_BELOW_YR = 1e9;
 const POSSIBLE_BELOW_YR = 1e11;
 
 /**
- * Order-of-magnitude despinning timescale [yr] (Gladman et al. 1996, eq. 9).
+ * Order-of-magnitude despinning timescale [yr], after Gladman et al. 1996 (k₂ form).
  * Internal only — never exposed as a displayed value.
  */
 function despinTimescale_yr(starMass_kg: number, a_m: number, planetMass_kg: number, planetRadius_m: number): number {
@@ -157,7 +161,8 @@ function despinTimescale_yr(starMass_kg: number, a_m: number, planetMass_kg: num
  *     synchronously rotating now, though it may be in a spin–orbit resonance such as Mercury's 3:2).
  *  2. Planet mass or radius unknown → `'unknown'`.
  *  3. Otherwise estimate t_lock ≈ ω₀ a⁶ I Q / (3 G M★² k₂ R_p⁵), I = 0.33 M_p R_p²,
- *     Q = 100, k₂ = 0.3, ω₀ = 2π / 12 h (Gladman et al. 1996; Barnes 2017) and bin it:
+ *     ω₀ = 2π / 12 h (form after Gladman et al. 1996, k₂ form; see also Barnes 2017), with
+ *     Q = 100, k₂ = 0.3 as typical assumed rocky-planet values (needs human verification), and bin it:
  *     - age known:   t_lock < age → `'likely'`; t_lock < 10 × age → `'possible'`; else `'unlikely'`.
  *     - age unknown: t_lock < 1e9 yr → `'likely'`; < 1e11 yr → `'possible'`; else `'unlikely'`.
  *
@@ -226,8 +231,8 @@ export function tidalLockingIndicator(p: {
   const t_yr = despinTimescale_yr(p.starMass_kg, p.a_m, p.planetMass_kg, p.planetRadius_m);
   const assumptions = [
     qualitative,
-    'Based on an order-of-magnitude despinning timescale t ≈ ω₀a⁶IQ/(3GM★²k₂R⁵) (Gladman et al. 1996, Icarus 122, 166; cf. Barnes 2017).',
-    `Assumed tidal dissipation Q = ${ASSUMED_Q}, Love number k₂ = ${ASSUMED_K2}, moment of inertia I = ${ASSUMED_ALPHA}·M·R², initial rotation period 12 h.`,
+    'Based on an order-of-magnitude despinning timescale t ≈ ω₀a⁶IQ/(3GM★²k₂R⁵) (form after Gladman et al. 1996, Icarus 122, 166, in the common Love-number form; see also Barnes 2017).',
+    `Assumed tidal dissipation Q = ${ASSUMED_Q} and Love number k₂ = ${ASSUMED_K2} (typical assumed rocky-planet values — needs human verification), moment of inertia I = ${ASSUMED_ALPHA}·M·R², initial rotation period 12 h.`,
     'Q and k₂ are unknown for exoplanets; the timescale is uncertain by a factor of ~100 or more. Eccentricity, atmospheric tides and spin–orbit resonances are ignored.',
   ];
 

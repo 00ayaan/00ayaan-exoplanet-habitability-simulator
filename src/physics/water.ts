@@ -36,7 +36,7 @@ const NEAR_ONE_BAR_MAX = 2;
 interface PhaseModel {
   /** Short identifier, surfaced in assumptions. */
   readonly name: string;
-  /** Inputs are pre-validated: T_K > 0 and finite, P_bar ≥ 0 and finite. */
+  /** Inputs are pre-validated: T_K ≥ 0 and finite, P_bar ≥ 0 and finite. */
   classify(T_K: number, P_bar: number): { phase: WaterPhase; assumptions: string[] };
 }
 
@@ -86,16 +86,16 @@ const activeModel: PhaseModel = thresholdModel;
  *  3. If P lies outside 0.5–2 bar an extra assumption notes that the fixed boiling threshold
  *     is only valid near 1 bar.
  *
- * @param surfaceTemp_K       Surface temperature [K]. Must be finite and > 0.
+ * @param surfaceTemp_K       Surface temperature [K]. Must be finite and ≥ 0 (0 K is a valid model output, e.g. albedo = 1).
  * @param surfacePressure_bar Surface pressure [bar]. Must be finite and ≥ 0.
  * @returns Result with categorical `value` (WaterPhase), unit `""`, and assumptions.
- * @throws RangeError for non-finite inputs, T ≤ 0 K, or P < 0.
+ * @throws RangeError for non-finite inputs, T < 0 K, or P < 0.
  *
  * Valid range: any physical (T, P); accuracy is only reasonable near 1 bar.
  */
 export function waterPhase(surfaceTemp_K: number, surfacePressure_bar: number): Result<WaterPhase> {
-  if (!Number.isFinite(surfaceTemp_K) || surfaceTemp_K <= 0) {
-    throw new RangeError(`waterPhase: surfaceTemp_K must be a finite number > 0 K (got ${surfaceTemp_K}).`);
+  if (!Number.isFinite(surfaceTemp_K) || surfaceTemp_K < 0) {
+    throw new RangeError(`waterPhase: surfaceTemp_K must be a finite number ≥ 0 K (got ${surfaceTemp_K}).`);
   }
   if (!Number.isFinite(surfacePressure_bar) || surfacePressure_bar < 0) {
     throw new RangeError(`waterPhase: surfacePressure_bar must be a finite number ≥ 0 (got ${surfacePressure_bar}).`);

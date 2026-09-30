@@ -48,9 +48,16 @@ describe('waterPhase pressure rules', () => {
   });
 });
 
+describe('waterPhase at 0 K', () => {
+  it('0 K (e.g. albedo = 1) is a valid input → ice at ≥ triple-point pressure', () => {
+    expect(waterPhase(0, 1).value).toBe('ice');
+    expect(waterPhase(0, WATER_TRIPLE_POINT_BAR).value).toBe('ice');
+    expect(waterPhase(0, 0.001).value).toBe('no-liquid-below-triple-point');
+  });
+});
+
 describe('waterPhase invalid input', () => {
   it('throws RangeError', () => {
-    expect(() => waterPhase(0, 1)).toThrow(RangeError);
     expect(() => waterPhase(-5, 1)).toThrow(RangeError);
     expect(() => waterPhase(288, -1)).toThrow(RangeError);
     expect(() => waterPhase(NaN, 1)).toThrow(RangeError);
