@@ -53,6 +53,22 @@ describe('parseArchiveRows', () => {
     expect(e.planet.derivedFields!.join(' ')).toMatch(/M sin i/);
   });
 
+  it('keeps radius-less RV planets with mass < 10 M⊕: radius null, pl_rade missing', () => {
+    for (const name of ['Proxima Cen b', "Teegarden's Star b"]) {
+      const r = byName(name);
+      expect(r.pl_rade).toBeNull();
+      expect(r.pl_radj).toBeNull();
+      expect(Number(r.pl_bmasse)).toBeLessThan(10);
+      const e = one(r);
+      expect(e.planet.radius_Rearth).toBeNull();
+      expect(e.missing).toContain('pl_rade');
+      expect(e.planet.mass_Mearth).toBe(r.pl_bmasse);
+    }
+    expect(parseArchiveRows(rows, GEN).entries.map((e) => e.id)).toEqual(
+      expect.arrayContaining(['proxima-cen-b', 'teegarden-s-star-b']),
+    );
+  });
+
   it('pl_radj fallback converts Jupiter radii and marks derived', () => {
     const e = one({ ...base, pl_rade: null, pl_radj: 0.1 });
     expect(e.planet.radius_Rearth).toBeCloseTo((0.1 * 7.1492e7) / 6.3781e6, 6);
@@ -142,7 +158,8 @@ describe('ADQL query builder', () => {
     const q = buildAdqlQuery();
     expect(q).toMatch(/FROM ps /);
     expect(q).toContain('default_flag = 1');
-    expect(q).toContain('pl_rade < 4');
+    expect(q).toContain('(pl_rade < 4 OR (pl_rade IS NULL AND (pl_bmasse < 10 OR pl_masse < 10)))');
+    expect(q).not.toMatch(/AND pl_rade < 4 /);
     const required = [
       'pl_name', 'hostname', 'pl_orbper', 'pl_orbpererr1', 'pl_orbpererr2', 'pl_orbsmax', 'pl_orbsmaxerr1',
       'pl_orbsmaxerr2', 'pl_orbeccen', 'pl_orbeccenerr1', 'pl_orbeccenerr2', 'pl_rade', 'pl_radeerr1',

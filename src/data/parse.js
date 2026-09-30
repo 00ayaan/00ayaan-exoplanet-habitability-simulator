@@ -51,11 +51,14 @@ export const ARCHIVE_COLUMNS = Object.freeze([
  *  - Star Teff, radius and mass must be known (needed for flux / orbit).
  *  - Orbit must be locatable: semi-major axis, or period (a derived via Kepler III).
  *  - Some size/mass measurement must exist.
- *  - pl_rade < 4 R⊕: small planets, where surface-habitability questions make
- *    sense, and a catalog small enough for a phone. NOTE: in ADQL a comparison
- *    with NULL is false, so this term also drops planets with no measured
- *    radius (e.g. RV-only planets such as Proxima Cen b). That is intentional
- *    for P1; relax it here if RV-only planets are wanted.
+ *  - Small planets only (where surface-habitability questions make sense, and
+ *    a catalog small enough for a phone):
+ *      pl_rade < 4 R⊕, OR, when no radius is measured (radial-velocity-only
+ *      planets such as Proxima Cen b, Teegarden's Star b), a mass < 10 M⊕
+ *      (pl_bmasse — often M sin i — or pl_masse). For those planets the
+ *      radius stays null (never guessed), so gravity/tides show "unknown".
+ *    ADQL comparisons with NULL are false, hence the explicit IS NULL branch.
+ *    (Agent 0 decision, Sept 2026.)
  */
 export const ARCHIVE_FILTER = [
   'default_flag = 1',
@@ -64,7 +67,7 @@ export const ARCHIVE_FILTER = [
   'st_mass IS NOT NULL',
   '(pl_orbsmax IS NOT NULL OR pl_orbper IS NOT NULL)',
   '(pl_rade IS NOT NULL OR pl_masse IS NOT NULL OR pl_bmasse IS NOT NULL)',
-  'pl_rade < 4',
+  '(pl_rade < 4 OR (pl_rade IS NULL AND (pl_bmasse < 10 OR pl_masse < 10)))',
 ].join(' AND ');
 
 /**
