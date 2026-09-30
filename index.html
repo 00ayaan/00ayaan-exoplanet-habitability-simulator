@@ -1,3 +1,31 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" /><title>Exoplanet Habitability Simulator</title></head>
-<body><div id="app">Scaffold — UI coming from Agent 7.</div><script type="module" src="./src/main.ts"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Exoplanet Habitability Simulator</title>
+    <meta name="description" content="A transparent, simplified planetary habitability simulator using public astronomical data. A physics model — not a life detector." />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#070b16" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f3f5fa" media="(prefers-color-scheme: light)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Habitability" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+    <!-- iOS needs a PNG apple-touch-icon (rendered from icons/icon.svg). -->
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>
+      <p style="padding:16px;font-family:system-ui,sans-serif">
+        The Exoplanet Habitability Simulator needs JavaScript to run its physics model in your browser.
+        Please enable JavaScript and reload.
+      </p>
+    </noscript>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
