@@ -127,12 +127,12 @@ export const NUMERIC_CASES: NumericCase[] = [
 export const CATEGORICAL_CASES: CategoricalCase[] = [
   { id: 'earth-status', group: 'Classification', caseLabel: 'Earth status', model: () => status(run(1)), reference: 'Highly Habitable', source: 'Reality / DESIGN §25' },
   { id: 'earth-phase', group: 'Classification', caseLabel: 'Earth water phase', model: () => run(1).waterPhase.value, reference: 'liquid', source: 'Reality' },
-  { id: 'venus-status-max', group: 'Classification', caseLabel: 'Venus status (A 0.76, 92 bar, greenhouse 1)', model: () => status(venus(1)), reference: 'Uninhabitable', source: 'Reality (737 K, no liquid)', note: '4 of 5 checks fail incl. both critical, yet not Uninhabitable: capped T_s ≈ 272 K is inside the 253–373 K "extended" band' },
-  { id: 'venus-status-earthgh', group: 'Classification', caseLabel: 'Venus status (A 0.76, 92 bar, Earth greenhouse)', model: () => status(venus()), reference: 'Uninhabitable', source: 'Reality (737 K, no liquid)', note: 'Same rule gap; only greenhouse < ≈ 0.66 yields Uninhabitable' },
+  { id: 'venus-status-max', group: 'Classification', caseLabel: 'Venus status (A 0.76, 92 bar, greenhouse 1)', model: () => status(venus(1)), reference: 'Uninhabitable', source: 'Reality (737 K, no liquid)', note: 'Fixed bug: was Marginally Habitable (capped T_s ≈ 272 K fell inside the 253–373 K extended band); new Uninhabitable rule' },
+  { id: 'venus-status-earthgh', group: 'Classification', caseLabel: 'Venus status (A 0.76, 92 bar, Earth greenhouse)', model: () => status(venus()), reference: 'Uninhabitable', source: 'Reality (737 K, no liquid)', note: 'Fixed bug: was Marginally Habitable (same rule gap)' },
   { id: 'venus-phase', group: 'Classification', caseLabel: 'Venus water phase (greenhouse 1)', model: () => venus(1).waterPhase.value, reference: 'vapor', source: 'Reality (737 K ≫ boiling)', limitation: 'Consequence of the one-layer temperature cap (model says ice)' },
   { id: 'mars-status', group: 'Classification', caseLabel: 'Mars status (0.006 bar)', model: () => status(mars()), reference: 'Uninhabitable', source: 'Reality / triple point (IAPWS)' },
   { id: 'mars-phase', group: 'Classification', caseLabel: 'Mars water phase (0.006 bar)', model: () => mars().waterPhase.value, reference: 'no-liquid-below-triple-point', source: 'IAPWS triple point 611.657 Pa' },
-  { id: 'albedo-1', group: 'Limits', caseLabel: 'Albedo = 1 (valid input) runs without throwing', model: () => { const r = safe(() => run(1, { albedo: 1 })); return r.ok ? 'runs' : r.err; }, reference: 'runs', source: 'AGENTS.md rule 9 (only A outside [0,1] is invalid)', note: 'T_eq = 0 K is correctly computed, then waterPhase() rejects T ≤ 0' },
+  { id: 'albedo-1', group: 'Limits', caseLabel: 'Albedo = 1 (valid input): water phase, status', model: () => { const r = safe(() => run(1, { albedo: 1 })); return r.ok ? `${r.v.waterPhase.value}, ${status(r.v)}` : r.err; }, reference: 'ice, Uninhabitable', source: 'AGENTS.md rule 9 (only A outside [0,1] is invalid)', note: 'Fixed bug: previously threw in waterPhase() on T = 0 K' },
   { id: 'ecc-verdict', group: 'Limits', caseLabel: 'e = 0.99 changes habitability vs e = 0', model: () => (status(run(1, {}, 'G', { ecc: 0.99 })) === status(run(1)) ? 'no change' : 'changes'), reference: 'changes', source: 'Mean flux ∝ 1/√(1−e²) ≈ 7.1×; periapsis flux 10⁴×', limitation: 'Headline flux/T/classification use a, not the orbit-averaged or periapsis flux' },
   { id: 'boil-100bar', group: 'Limits', caseLabel: 'Water phase at ~411 K, 100 bar', model: () => run(0.6, { surfacePressure_bar: 100, greenhouse: 1 }).waterPhase.value, reference: 'liquid', source: 'IAPWS saturation T at 100 bar ≈ 584 K', limitation: 'Fixed 373.15 K boiling threshold, no Clausius–Clapeyron curve yet' },
 ];
@@ -176,7 +176,7 @@ export function buildRows(): ReportRow[] {
       source: c.source,
       diffPct: null,
       verdict: ok ? '✓' : c.limitation ? '⚠ known limitation' : '✗ bug',
-      note: ok ? '' : (c.limitation ?? c.note ?? ''),
+      note: ok ? (c.note ?? '') : (c.limitation ?? c.note ?? ''),
     });
   }
   return rows;

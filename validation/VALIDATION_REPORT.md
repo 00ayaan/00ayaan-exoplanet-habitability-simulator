@@ -4,7 +4,7 @@ Generated 2026-09-29 by `validation/generate-report.test.ts` (Agent 9, independe
 
 Reference values are derived independently (validation/reference.ts: CODATA 2018, IAU 2015 nominal values, NASA GSFC planetary fact sheets, Kopp & Lean 2011, Kopparapu et al. 2014, IAPWS) — never from the implementation's own constants or formulas. Verdicts are computed: ✓ within tolerance; ⚠ outside tolerance but a documented limitation of the simplified model; ✗ bug (outside tolerance and not an accepted limitation).
 
-**Summary:** 33 cases — 24 ✓, 6 ⚠ known limitation, 3 ✗ bug.
+**Summary:** 33 cases — 27 ✓, 6 ⚠ known limitation, 0 ✗ bug.
 
 | Group | Case | Model | Reference | Reference source | Diff % | Verdict | Note |
 |---|---|---|---|---|---|---|---|
@@ -33,20 +33,18 @@ Reference values are derived independently (validation/reference.ts: CODATA 2018
 | Limits | Period ratio e = 0.99 / e = 0 | 1 | 1 | Kepler III (independent of e) | +0.0000 | ✓ | tol ±1e-9 % |
 | Classification | Earth status | Highly Habitable | Highly Habitable | Reality / DESIGN §25 | — | ✓ |  |
 | Classification | Earth water phase | liquid | liquid | Reality | — | ✓ |  |
-| Classification | Venus status (A 0.76, 92 bar, greenhouse 1) | Marginally Habitable | Uninhabitable | Reality (737 K, no liquid) | — | ✗ bug | 4 of 5 checks fail incl. both critical, yet not Uninhabitable: capped T_s ≈ 272 K is inside the 253–373 K "extended" band |
-| Classification | Venus status (A 0.76, 92 bar, Earth greenhouse) | Marginally Habitable | Uninhabitable | Reality (737 K, no liquid) | — | ✗ bug | Same rule gap; only greenhouse < ≈ 0.66 yields Uninhabitable |
+| Classification | Venus status (A 0.76, 92 bar, greenhouse 1) | Uninhabitable | Uninhabitable | Reality (737 K, no liquid) | — | ✓ | Fixed bug: was Marginally Habitable (capped T_s ≈ 272 K fell inside the 253–373 K extended band); new Uninhabitable rule |
+| Classification | Venus status (A 0.76, 92 bar, Earth greenhouse) | Uninhabitable | Uninhabitable | Reality (737 K, no liquid) | — | ✓ | Fixed bug: was Marginally Habitable (same rule gap) |
 | Classification | Venus water phase (greenhouse 1) | ice | vapor | Reality (737 K ≫ boiling) | — | ⚠ known limitation | Consequence of the one-layer temperature cap (model says ice) |
 | Classification | Mars status (0.006 bar) | Uninhabitable | Uninhabitable | Reality / triple point (IAPWS) | — | ✓ |  |
 | Classification | Mars water phase (0.006 bar) | no-liquid-below-triple-point | no-liquid-below-triple-point | IAPWS triple point 611.657 Pa | — | ✓ |  |
-| Limits | Albedo = 1 (valid input) runs without throwing | RangeError: waterPhase: surfaceTemp_K must be a finite number > 0 K (got 0). | runs | AGENTS.md rule 9 (only A outside [0,1] is invalid) | — | ✗ bug | T_eq = 0 K is correctly computed, then waterPhase() rejects T ≤ 0 |
+| Limits | Albedo = 1 (valid input): water phase, status | ice, Uninhabitable | ice, Uninhabitable | AGENTS.md rule 9 (only A outside [0,1] is invalid) | — | ✓ | Fixed bug: previously threw in waterPhase() on T = 0 K |
 | Limits | e = 0.99 changes habitability vs e = 0 | no change | changes | Mean flux ∝ 1/√(1−e²) ≈ 7.1×; periapsis flux 10⁴× | — | ⚠ known limitation | Headline flux/T/classification use a, not the orbit-averaged or periapsis flux |
 | Limits | Water phase at ~411 K, 100 bar | vapor | liquid | IAPWS saturation T at 100 bar ≈ 584 K | — | ⚠ known limitation | Fixed 373.15 K boiling threshold, no Clausius–Clapeyron curve yet |
 
 ## Bugs (✗)
 
-- **Venus status (A 0.76, 92 bar, greenhouse 1)** — model `Marginally Habitable`, expected `Uninhabitable`. 4 of 5 checks fail incl. both critical, yet not Uninhabitable: capped T_s ≈ 272 K is inside the 253–373 K "extended" band
-- **Venus status (A 0.76, 92 bar, Earth greenhouse)** — model `Marginally Habitable`, expected `Uninhabitable`. Same rule gap; only greenhouse < ≈ 0.66 yields Uninhabitable
-- **Albedo = 1 (valid input) runs without throwing** — model `RangeError: waterPhase: surfaceTemp_K must be a finite number > 0 K (got 0).`, expected `runs`. T_eq = 0 K is correctly computed, then waterPhase() rejects T ≤ 0
+None.
 
 ## Known limitations confirmed (⚠)
 

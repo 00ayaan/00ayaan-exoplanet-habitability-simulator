@@ -168,14 +168,15 @@ describe('albedo limits', () => {
     expect(o.waterPhase.value).toBe('ice');
   });
 
-  // BUG (Agent 8 pipeline / Agent 4 water.ts / Agent 5 habitability.ts): albedo = 1 is a VALID input
+  // FIXED BUG (found by Agent 9; fixed by owners, Sept 2026 — waterPhase and classifyHabitability now accept 0 K).
+  // Original report — BUG (Agent 8 pipeline / Agent 4 water.ts / Agent 5 habitability.ts): albedo = 1 is a VALID input
   // (AGENTS.md rule 9 only rejects albedo OUTSIDE [0, 1]; simulate()'s docs promise RangeError only for
   // invalid input), and equilibriumTemperature correctly returns 0 K. But simulate() then throws
   // "waterPhase: surfaceTemp_K must be a finite number > 0 K (got 0)" (and classifyHabitability would
   // throw on T ≤ 0 too). Repro: simulate({star: G, planet: hypotheticalPlanet(1),
   // atmosphere: {surfacePressure_bar: 1, greenhouse: EARTH_GREENHOUSE, albedo: 1}, mode: 'hypothetical',
   // modifiedFields: []}). Expected: T = 0 K, water 'ice', Uninhabitable — no throw.
-  it.fails('A = 1: T_eq = 0 K, no throw (ice, Uninhabitable)', () => {
+  it('A = 1: T_eq = 0 K, no throw (ice, Uninhabitable) [regression test for fixed bug]', () => {
     const o = run(1, { albedo: 1 });
     expect(o.equilibriumTemp.value).toBe(0);
     expect(o.waterPhase.value).toBe('ice');

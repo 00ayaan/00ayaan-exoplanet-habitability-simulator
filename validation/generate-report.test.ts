@@ -8,8 +8,12 @@ import { buildRows, renderReport } from './report';
 
 const REPORT_DATE = '2026-09-29';
 
-/** Cases known to be bugs today (see solar-system / limiting-cases tests marked it.fails). */
-const KNOWN_BUG_IDS = ['venus-status-max', 'venus-status-earthgh', 'albedo-1'];
+/**
+ * Cases known to be bugs today. Previously ['venus-status-max', 'venus-status-earthgh', 'albedo-1'];
+ * all three were fixed by their owners (Sept 2026) and are now regression-checked as ✓ below.
+ */
+const KNOWN_BUG_IDS: string[] = [];
+const FIXED_BUG_IDS = ['venus-status-max', 'venus-status-earthgh', 'albedo-1'];
 
 describe('validation report', () => {
   const rows = buildRows();
@@ -29,5 +33,9 @@ describe('validation report', () => {
   it('the only ✗ rows are the recorded bugs (this test fails if a new bug appears — or passes-through if one is fixed)', () => {
     const bugs = rows.filter((r) => r.verdict === '✗ bug').map((r) => r.id);
     for (const id of bugs) expect(KNOWN_BUG_IDS).toContain(id);
+  });
+
+  it('previously reported bugs stay fixed (✓)', () => {
+    for (const id of FIXED_BUG_IDS) expect(rows.find((r) => r.id === id)?.verdict, id).toBe('✓');
   });
 });

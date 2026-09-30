@@ -58,7 +58,8 @@ describe('Venus (0.723 AU, A = 0.76, 92 bar)', () => {
     expect(byId.liquidWater).toBe(false);
   });
 
-  // BUG (classification — Agent 5, src/physics/habitability.ts rule "uninhabitable" in thresholds.json;
+  // FIXED BUG (found by Agent 9; fixed by Agent 5 with a new Uninhabitable rule, Sept 2026).
+  // Original report — BUG (classification — Agent 5, src/physics/habitability.ts rule "uninhabitable" in thresholds.json;
   // root cause compounded by the Agent 3 one-layer limitation above):
   // Venus with its real albedo 0.76 and pressure 92 bar is classified "Marginally Habitable" for any
   // greenhouse ≥ ≈ 0.66 (incl. the Earth default 0.78 and the maximum 1.0), even though BOTH critical
@@ -70,10 +71,10 @@ describe('Venus (0.723 AU, A = 0.76, 92 bar)', () => {
   //   atmosphere: {albedo: 0.76, surfacePressure_bar: 92, greenhouse: 1}, mode: 'hypothetical',
   //   modifiedFields: []}).habitability.status === 'Marginally Habitable'. Expected: 'Uninhabitable'.
   // Only greenhouse < ≈ 0.66 (T_s < 253 K) gives Uninhabitable.
-  it.fails('BUG: Venus (A 0.76, 92 bar, greenhouse 1.0) → Uninhabitable', () => {
+  it('Venus (A 0.76, 92 bar, greenhouse 1.0) → Uninhabitable [regression test for fixed bug]', () => {
     expect(vMax.habitability.status).toBe('Uninhabitable');
   });
-  it.fails('BUG: Venus (A 0.76, 92 bar, Earth greenhouse) → Uninhabitable', () => {
+  it('Venus (A 0.76, 92 bar, Earth greenhouse) → Uninhabitable [regression test for fixed bug]', () => {
     expect(vEarthGH.habitability.status).toBe('Uninhabitable');
   });
 
