@@ -41,6 +41,13 @@ export function measured(value: number | null | undefined, unit: string, m?: Mea
   return out;
 }
 
+/** "1 year", "2 years", "0.5 years": singular only when the displayed number is exactly 1. */
+export function plural(x: number | null | undefined, singular: string, pluralForm = singular + 's', sig = 3): string {
+  const t = num(x, sig);
+  if (t === UNKNOWN) return UNKNOWN;
+  return `${t} ${t === '1' ? singular : pluralForm}`;
+}
+
 export function waterPhaseLabel(p: string): string {
   switch (p) {
     case 'ice': return 'Ice';

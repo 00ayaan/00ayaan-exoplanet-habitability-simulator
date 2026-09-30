@@ -6,7 +6,7 @@
 import type { HabitabilityResult, HabitabilityStatus } from '../../physics/types';
 import { h, replace } from '../dom';
 
-const BADGE: Record<HabitabilityStatus, { icon: string; cls: string }> = {
+export const STATUS_BADGE: Record<HabitabilityStatus, { icon: string; cls: string }> = {
   'Highly Habitable': { icon: '●', cls: 'good' },
   'Marginally Habitable': { icon: '◐', cls: 'warn' },
   Uninhabitable: { icon: '○', cls: 'bad' },
@@ -37,7 +37,7 @@ export class HabitabilityPanel {
       replace(this.body);
       return;
     }
-    const b = BADGE[r.status];
+    const b = STATUS_BADGE[r.status];
     // Only re-render the live region when the announcement would change, to avoid chatter while sliding.
     const key = `${r.status}|${r.confidence}`;
     if (key !== this.lastStatus) {

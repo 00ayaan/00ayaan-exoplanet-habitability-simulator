@@ -1,6 +1,7 @@
 /**
  * Searchable real-planet picker: a text filter + a list of large tap targets
  * (listbox semantics via radio buttons). Shows host star and radius per row.
+ * Data-status banners live in dataBanner.ts so they can show in either mode.
  */
 import type { Catalog } from '../../physics/types';
 import { h, nextId, replace } from '../dom';
@@ -20,7 +21,6 @@ export class PlanetPicker {
   private search: HTMLInputElement;
   private list: HTMLDivElement;
   private count: HTMLParagraphElement;
-  private banner: HTMLDivElement;
   private name = nextId('planet');
   private lastKey = '';
 
@@ -34,20 +34,12 @@ export class PlanetPicker {
       if (t.name === this.name && t.checked) onSelect(t.value);
     });
     this.count = h('p', { class: 'hint', 'aria-live': 'polite' });
-    this.banner = h('div');
     this.el = h('div', { class: 'picker' },
-      this.banner,
       h('label', { for: id, class: 'control-label' }, 'Choose a real exoplanet'),
       this.search, this.count, this.list);
   }
 
   update(p: PlanetPickerProps): void {
-    // Banner
-    if (p.status === 'loading') replace(this.banner, h('p', { class: 'banner banner--info' }, 'Loading real-planet data…'));
-    else if (p.status !== 'ok') replace(this.banner, h('p', { class: 'banner banner--warn', role: 'status' }, '⚠ Real-planet data unavailable — using hypothetical mode'));
-    else if (p.catalog?.isFixture) replace(this.banner, h('p', { class: 'banner banner--warn', role: 'status' }, '⚠ Dev sample data — not real archive values'));
-    else replace(this.banner);
-
     if (this.search.value !== p.filter) this.search.value = p.filter;
     const entries = p.catalog?.entries ?? [];
     const key = `${p.catalog?.generatedAt}|${entries.length}|${p.filter}|${p.selectedId}`;

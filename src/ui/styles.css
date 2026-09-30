@@ -82,7 +82,9 @@ button, input { font: inherit; color: inherit; }
 
 @media (min-width: 900px) {
   .layout { grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); padding: 8px 20px; }
-  .col--controls { position: sticky; top: 8px; align-self: start; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; }
+  /* Not sticky: a sticky column capped at viewport height hid the lower controls on short screens. */
+  .col--controls { align-self: start; }
+  .resultbar { display: none !important; }
   .app-title { font-size: 1.6rem; }
 }
 
@@ -159,9 +161,9 @@ button, input { font: inherit; color: inherit; }
   width: 100%; min-height: var(--tap); font-size: 16px; /* ≥16px prevents iOS zoom */
   padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
 }
-.picker__list { display: grid; gap: 4px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.picker__list { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .picker__row {
-  display: grid; min-height: var(--tap); padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border);
+  position: relative; flex: 0 0 auto; display: grid; min-height: var(--tap); padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--surface-2); cursor: pointer;
 }
 .picker__row:has(input:checked) { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
@@ -255,4 +257,28 @@ button, input { font: inherit; color: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}
+
+/* ---------- provenance line ---------- */
+.prov { display: grid; gap: 4px; font-size: 0.85rem; color: var(--text-dim); padding: 0 4px; }
+.prov:empty { display: none; }
+.prov__mod { color: var(--warn); font-weight: 600; overflow-wrap: anywhere; }
+.prov__src { overflow-wrap: anywhere; }
+.data-banner:empty { display: none; }
+
+/* ---------- phone result bar (< 900 px) ---------- */
+:root { --resultbar-h: 52px; }
+.resultbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: var(--resultbar-h); width: 100%;
+  padding: 6px max(12px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--surface) 94%, transparent); border: 0; border-top: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  font-size: 0.9rem; text-align: left; cursor: pointer;
+}
+.resultbar__status { font-weight: 750; white-space: nowrap; background: none !important; border: 0 !important; padding: 0; }
+.resultbar__vals { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@media (max-width: 899.98px) {
+  body { padding-bottom: calc(var(--resultbar-h) + 12px + env(safe-area-inset-bottom)); }
 }

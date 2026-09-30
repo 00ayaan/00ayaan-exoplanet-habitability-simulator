@@ -4,7 +4,7 @@
  */
 import type { CatalogEntry, Star } from '../../physics/types';
 import { h, replace } from '../dom';
-import { measured } from '../format';
+import { measured, plural } from '../format';
 
 export interface MeasuredProps {
   mode: 'hypothetical' | 'real';
@@ -49,7 +49,7 @@ export function renderMeasured(container: HTMLElement, p: MeasuredProps): void {
       ...row('Planet mass', measured(e.planet.mass_Mearth, 'M⊕', pu.mass_Mearth)),
       ...row('Semi-major axis', measured(e.planet.a_AU, 'AU', pu.a_AU, 4) + (derived.has('a_AU') ? ' (derived)' : '')),
       ...row('Eccentricity', measured(e.planet.ecc, '', pu.ecc) + (e.missing.includes('pl_orbeccen') ? ' (not measured — 0 used)' : '')),
-      ...row('Period', measured(e.planet.orbitalPeriod_days ?? null, 'days')),
+      ...row('Period', e.planet.orbitalPeriod_days == null ? 'unknown' : plural(e.planet.orbitalPeriod_days, 'day', 'days', 4)),
       ...row('Moon', e.planet.moon.kind === 'custom' ? e.planet.moon.label : e.planet.moon.kind)),
     e.missing.length ? h('p', { class: 'hint' }, `Missing from catalog (not guessed): ${e.missing.join(', ')}`) : null,
     h('p', { class: 'hint' }, `Source: ${e.planet.reference ?? e.planet.source}`),

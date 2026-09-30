@@ -5,7 +5,7 @@
  */
 import type { Result, SimulationOutput } from '../../physics/types';
 import { h, replace } from '../dom';
-import { celsius, days, gEarth, kelvin, num, waterPhaseLabel, years } from '../format';
+import { celsius, days, gEarth, kelvin, num, plural, waterPhaseLabel, years } from '../format';
 
 interface CardSpec {
   title: string;
@@ -48,7 +48,7 @@ export function renderResults(container: HTMLElement, out: SimulationOutput | nu
 
   const cards: CardSpec[] = [
     { title: 'Stellar flux', primary: `${num(out.insolation.value)} S⊕`, secondary: `${num(out.stellarFlux.value)} W/m²`, assumptions: uniq(out.stellarFlux, out.insolation, out.star.luminosity) },
-    { title: 'Orbital period', primary: pDays < 1000 ? `${num(pDays)} days` : `${num(years(P))} years`, secondary: pDays < 1000 ? `${num(years(P))} years` : `${num(pDays)} days`, assumptions: out.orbit.period.assumptions },
+    { title: 'Orbital period', primary: pDays < 1000 ? plural(pDays, 'day') : plural(years(P), 'year'), secondary: pDays < 1000 ? plural(years(P), 'year') : plural(pDays, 'day'), assumptions: out.orbit.period.assumptions },
     { title: 'Surface gravity', primary: g == null ? 'unknown' : `${num(g)} m/s²`, secondary: g == null ? 'Needs planet mass and radius' : `${num(gEarth(g))} g⊕`, assumptions: out.surfaceGravity.assumptions },
     { title: 'Equilibrium temp.', primary: kelvin(out.equilibriumTemp.value), secondary: celsius(out.equilibriumTemp.value), assumptions: out.equilibriumTemp.assumptions },
     { title: 'Est. surface temp.', primary: kelvin(out.surfaceTemp.value), secondary: celsius(out.surfaceTemp.value), assumptions: uniq(out.surfaceTemp, out.epsilon) },

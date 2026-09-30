@@ -19,6 +19,9 @@ import { OrbitView } from './components/orbitView';
 import { renderResults } from './components/results';
 import { HabitabilityPanel } from './components/habitability';
 import { renderAssumptions } from './components/assumptions';
+import { renderDataBanner } from './components/dataBanner';
+import { renderProvenanceLine } from './components/provenance';
+import { ResultBar } from './components/resultBar';
 
 const A_MIN = 0.01, A_MAX = 100, P_MIN = 0.001, P_MAX = 100;
 
@@ -95,6 +98,9 @@ export function mountApp(root: HTMLElement): void {
   const assumptionsEl = h('div');
   const errorEl = h('div', { role: 'alert' });
 
+  const bannerEl = h('div', { class: 'data-banner' });
+  const provEl = h('div', { class: 'prov', 'aria-label': 'Data provenance' });
+  const resultBar = new ResultBar(() => hab.el);
   const realOnly = h('div', { class: 'stack' }, picker.el);
   const starBlock = h('div', {}, starPicker.el);
 
@@ -105,16 +111,17 @@ export function mountApp(root: HTMLElement): void {
       h('p', { class: 'app-subtitle' }, 'A simplified physics model — not a life detector')),
     h('main', { class: 'layout' },
       h('section', { class: 'col col--controls', 'aria-label': 'Inputs' },
-        h('div', { class: 'card stack' }, modeSwitch.el, realOnly, starBlock),
+        h('div', { class: 'card stack' }, modeSwitch.el, bannerEl, realOnly, starBlock),
         h('div', { class: 'card stack' },
           h('h2', { class: 'card__title' }, 'Controls'), modChip, aSlider.el, pSlider.el, gSlider.el, eccEl),
         h('div', { class: 'card' }, measuredEl)),
       h('section', { class: 'col col--results', 'aria-label': 'Results' },
-        errorEl, hab.el, orbit.el,
+        errorEl, hab.el, provEl, orbit.el,
         h('section', { class: 'card', 'aria-labelledby': 'res-h' }, h('h2', { id: 'res-h', class: 'card__title' }, 'Model outputs'), resultsEl),
         assumptionsEl)),
     h('footer', { class: 'app-footer' },
       h('p', {}, 'Educational prototype. Data: NASA Exoplanet Archive (when available). Every number is a model output with stated assumptions.')),
+    resultBar.el,
   );
 
   // ---- the one update path -------------------------------------------------
@@ -132,8 +139,8 @@ export function mountApp(root: HTMLElement): void {
       { value: 'hypothetical', label: 'Hypothetical' },
       { value: 'real', label: 'Real exoplanet', disabled: !catalogUsable && state.catalogStatus !== 'loading' },
     ] });
-    // Picker shows in real mode; in hypothetical mode it is shown only to surface the "data unavailable" banner.
-    realOnly.hidden = !(real || (!catalogUsable && state.catalogStatus !== 'loading'));
+    renderDataBanner(bannerEl, { mode: state.mode, status: state.catalogStatus, isFixture: !!state.catalog?.isFixture });
+    realOnly.hidden = !real;
     picker.update({ catalog: state.catalog, status: state.catalogStatus, filter: state.filter, selectedId: state.selectedId });
     starBlock.hidden = real;
     starPicker.update({ value: state.starType, options: starOptions() });
@@ -175,6 +182,8 @@ export function mountApp(root: HTMLElement): void {
       renderResults(resultsEl, state.output);
       hab.update(state.output?.habitability ?? null);
       renderAssumptions(assumptionsEl, state.output);
+      renderProvenanceLine(provEl, state.output);
+      resultBar.update(state.output);
     }
   }
 
