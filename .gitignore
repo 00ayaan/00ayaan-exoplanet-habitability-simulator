@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+# Capacitor native projects are generated later with `npx cap add ios|android`
+ios/App/Pods/
+android/.gradle/
