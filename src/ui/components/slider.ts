@@ -1,56 +1,107 @@
 /**
- * Range slider with linear or logarithmic mapping. Internally the <input> runs
- * 0..1000 so log and linear behave the same on touch. Optional reference markers
- * (e.g. "Earth") are real buttons (tap to snap), not hover-only.
+ * Slider row: label + "?" help + source badge, an inline number box (precise
+ * entry: inputmode=decimal, Enter/blur commits, Esc cancels, validated), the
+ * range input (log or linear, colored fill), and tick labels at their real
+ * positions that snap the value when tapped.
  */
 import { h, nextId } from '../dom';
+import type { SourceTag } from '../state';
+import { badge, setBadge } from './badge';
+import { Help } from './help';
 
 const STEPS = 1000;
 
 export interface SliderConfig {
   label: string;
+  unit: string;
   scale: 'log' | 'linear';
   min: number;
   max: number;
-  format: (v: number) => string;
-  markers?: { value: number; label: string }[];
-  /** Short note under the slider. */
-  hint?: string;
+  /** Displayed number for a value (e.g. greenhouse 0.78 → 78). Default identity. */
+  toDisplay?: (v: number) => number;
+  fromDisplay?: (d: number) => number;
+  /** Format a display number for the box. */
+  format: (d: number) => string;
+  quantize?: (v: number) => number;
+  ticks?: { value: number; label: string }[];
+  fill?: 'sky' | 'amber' | 'slate';
+  help: string;
+  /** 'box' = editable number field; 'readout' = mono text only. */
+  entry?: 'box' | 'readout';
+  /** Muted text after the unit (e.g. "ε=0.78"). */
+  extra?: (v: number) => string;
   onInput: (value: number) => void;
 }
 
 export class Slider {
   readonly el: HTMLDivElement;
-  private input: HTMLInputElement;
-  private output: HTMLOutputElement;
+  private range: HTMLInputElement;
+  private box: HTMLInputElement | null = null;
+  private readout: HTMLOutputElement | null = null;
+  private extraEl: HTMLSpanElement;
+  private err: HTMLParagraphElement;
+  private badgeEl: HTMLSpanElement;
   private value = NaN;
+  private disabled = false;
+  private toD: (v: number) => number;
+  private fromD: (d: number) => number;
 
   constructor(private cfg: SliderConfig) {
+    this.toD = cfg.toDisplay ?? ((v) => v);
+    this.fromD = cfg.fromDisplay ?? ((d) => d);
     const id = nextId('slider');
-    this.input = h('input', { type: 'range', id, min: 0, max: STEPS, step: 1, class: 'slider__input' });
-    this.output = h('output', { for: id, class: 'slider__value' });
-    this.input.addEventListener('input', () => {
-      const v = this.fromPos(Number(this.input.value));
-      this.value = v;
-      this.show(v);
+    const errId = `${id}-err`;
+    this.range = h('input', { type: 'range', id, min: 0, max: STEPS, step: 1, class: `range range--${cfg.fill ?? 'sky'}` });
+    this.range.addEventListener('input', () => {
+      let v = this.fromPos(Number(this.range.value));
+      if (cfg.quantize) v = cfg.quantize(v);
+      this.set(v, false);
       cfg.onInput(v);
     });
-    const markers = (cfg.markers ?? []).map((m) => {
-      const pct = this.toPos(m.value) / STEPS;
-      const btn = h('button', {
-        type: 'button', class: 'slider__marker',
-        style: `--p:${pct}`,
-        'aria-label': `Set ${cfg.label} to ${m.label} value (${cfg.format(m.value)})`,
-      }, h('span', { class: 'slider__tick', 'aria-hidden': 'true' }), m.label);
-      btn.addEventListener('click', () => { this.show(m.value); this.input.value = String(this.toPos(m.value)); cfg.onInput(m.value); });
-      return btn;
+
+    let valueEl: HTMLElement;
+    if ((cfg.entry ?? 'box') === 'box') {
+      const box = h('input', {
+        type: 'text', inputmode: 'decimal', class: 'numbox', autocomplete: 'off', spellcheck: 'false', enterkeyhint: 'done',
+        'aria-label': `${cfg.label}${cfg.unit ? ` in ${cfg.unit}` : ''}`, 'aria-describedby': errId,
+      });
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); if (this.commit(box.value)) box.blur(); }
+        else if (e.key === 'Escape') { this.cancel(); box.blur(); }
+      });
+      box.addEventListener('blur', () => { if (!this.commit(box.value)) this.cancel(); });
+      box.addEventListener('focus', () => box.select());
+      this.box = box;
+      valueEl = box;
+    } else {
+      this.readout = h('output', { for: id, class: 'readout-val' });
+      valueEl = this.readout;
+    }
+    this.extraEl = h('span', { class: 'slider__extra' });
+    this.err = h('p', { id: errId, class: 'slider__err', 'aria-live': 'polite' });
+    this.badgeEl = badge('assumed');
+
+    const ticks = (cfg.ticks ?? []).map((t) => {
+      const pct = this.toPos(t.value) / STEPS;
+      const edge = pct < 0.08 ? 'start' : pct > 0.92 ? 'end' : 'mid';
+      const b = h('button', { type: 'button', class: `tick tick--${edge}`, style: `--p:${pct}`, 'aria-label': `Set ${cfg.label} to ${t.label}` }, t.label);
+      b.addEventListener('click', () => {
+        if (this.disabled) return;
+        this.set(t.value, true);
+        cfg.onInput(t.value);
+      });
+      return b;
     });
+
     this.el = h('div', { class: 'slider' },
-      h('div', { class: 'slider__head' }, h('label', { for: id, class: 'control-label' }, cfg.label), this.output),
-      this.input,
-      markers.length ? h('div', { class: 'slider__markers' }, ...markers) : null,
-      h('div', { class: 'slider__range', 'aria-hidden': 'true' }, h('span', {}, cfg.format(cfg.min)), h('span', {}, cfg.format(cfg.max))),
-      cfg.hint ? h('p', { class: 'hint' }, cfg.hint) : null);
+      h('div', { class: 'slider__head' },
+        h('label', { for: id, class: 'slider__label' }, cfg.label),
+        new Help(cfg.label, cfg.help).el,
+        this.badgeEl,
+        h('span', { class: 'slider__value' }, valueEl, cfg.unit ? h('span', { class: 'slider__unit' }, cfg.unit) : null, this.extraEl)),
+      this.range,
+      ticks.length ? h('div', { class: 'ticks' }, ...ticks) : null,
+      this.err);
   }
 
   private toPos(v: number): number {
@@ -67,18 +118,65 @@ export class Slider {
     return Number(v.toPrecision(4));
   }
 
-  private show(v: number): void {
-    const text = this.cfg.format(v);
-    this.output.textContent = text;
-    this.input.setAttribute('aria-valuetext', text);
+  private commit(text: string): boolean {
+    const d = Number(text.trim().replace(',', '.'));
+    const { min, max } = this.cfg;
+    const lo = this.toD(min), hi = this.toD(max);
+    if (text.trim() === '' || !Number.isFinite(d) || d < Math.min(lo, hi) || d > Math.max(lo, hi)) {
+      this.box?.setAttribute('aria-invalid', 'true');
+      this.err.textContent = `Enter a number from ${this.cfg.format(lo)} to ${this.cfg.format(hi)}${this.cfg.unit ? ' ' + this.cfg.unit : ''}.`;
+      return false;
+    }
+    let v = Number(this.fromD(d).toPrecision(6));
+    if (this.cfg.quantize) v = this.cfg.quantize(v);
+    this.box?.removeAttribute('aria-invalid');
+    this.err.textContent = '';
+    if (v !== this.value) { this.set(v, true); this.cfg.onInput(v); } else this.show(v);
+    return true;
   }
 
-  /** Sync from state. The true value may lie outside the slider range (real planets); it is shown as-is. */
-  update(value: number): void {
-    if (value === this.value) return;
-    this.value = value;
-    this.show(value);
-    const pos = String(this.toPos(value));
-    if (this.input.value !== pos) this.input.value = pos;
+  private cancel(): void {
+    this.box?.removeAttribute('aria-invalid');
+    this.err.textContent = '';
+    if (this.box) this.box.value = Number.isFinite(this.value) ? this.cfg.format(this.toD(this.value)) : 'unknown';
+    this.show(this.value);
+  }
+
+  private show(v: number): void {
+    if (!Number.isFinite(v)) {
+      if (this.box) this.box.value = 'unknown';
+      if (this.readout) this.readout.textContent = 'unknown';
+      this.range.setAttribute('aria-valuetext', 'unknown');
+      this.extraEl.textContent = '';
+      return;
+    }
+    const text = this.cfg.format(this.toD(v));
+    if (this.box && document.activeElement !== this.box) this.box.value = text;
+    if (this.readout) this.readout.textContent = text;
+    this.range.setAttribute('aria-valuetext', `${text}${this.cfg.unit ? ' ' + this.cfg.unit : ''}`);
+    this.extraEl.textContent = this.cfg.extra ? this.cfg.extra(v) : '';
+  }
+
+  private set(v: number, moveThumb: boolean): void {
+    this.value = v;
+    this.show(v);
+    const pos = this.toPos(v);
+    if (moveThumb && this.range.value !== String(pos)) this.range.value = String(pos);
+    this.range.style.setProperty('--pct', `${(Number(this.range.value) / STEPS) * 100}%`);
+  }
+
+  /** Sync from state. Values outside the slider range (real planets) are shown as-is; null = unknown. */
+  update(value: number | null, tag: SourceTag, disabled = false): void {
+    setBadge(this.badgeEl, tag);
+    if (disabled !== this.disabled) {
+      this.disabled = disabled;
+      this.range.disabled = disabled;
+      if (this.box) this.box.disabled = disabled;
+      this.el.classList.toggle('is-disabled', disabled);
+    }
+    const v = value ?? NaN;
+    if (v === this.value || (Number.isNaN(v) && Number.isNaN(this.value) && this.box?.value === 'unknown')) return;
+    if (Number.isNaN(v)) { this.value = NaN; this.show(NaN); return; }
+    this.set(v, true);
   }
 }

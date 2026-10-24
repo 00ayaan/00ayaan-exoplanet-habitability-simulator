@@ -146,6 +146,16 @@ describe('real mode provenance', () => {
     const mod = out.provenance.find((p) => p.startsWith('Modified from archive values:'));
     expect(mod).toBe('Modified from archive values: a_AU (0.05 AU → 0.2 AU), surfacePressure_bar (assumed default 1 bar → 2 bar)');
   });
+  it('albedo is overridable in real mode and listed as modified', () => {
+    const input: SimulationInput = {
+      star: STAR_PRESETS.M, planet: realPlanet(), atmosphere: { ...defaultAtmosphere(), albedo: 0.5 }, mode: 'real', modifiedFields: ['albedo'],
+    };
+    const out = simulate(input);
+    const base = simulate({ ...input, atmosphere: defaultAtmosphere(), modifiedFields: [] });
+    expect(out.provenance).toContain(`Modified from archive values: albedo (assumed default ${DEFAULT_ALBEDO} → 0.5)`);
+    expect(out.equilibriumTemp.value).toBeLessThan(base.equilibriumTemp.value);
+    expect(out.assumptions.join(' ')).not.toMatch(/Ignored modification request/);
+  });
   it('no modified line when nothing was modified', () => {
     const out = simulate({ star: STAR_PRESETS.M, planet: realPlanet(), atmosphere: defaultAtmosphere(), mode: 'real', modifiedFields: [] });
     expect(out.provenance.some((p) => p.startsWith('Modified'))).toBe(false);

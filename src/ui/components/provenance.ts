@@ -15,5 +15,5 @@ export function renderProvenanceLine(container: HTMLElement, out: SimulationOutp
   const modified = out.provenance.filter((l) => /^modified/i.test(l));
   replace(container,
     h('p', { class: 'prov__src' }, src),
-    ...modified.map((l) => h('p', { class: 'prov__mod' }, h('span', { 'aria-hidden': 'true' }, '⚑ '), l)));
+    ...modified.map((l) => h('p', { class: 'prov__mod' }, l)));
 }

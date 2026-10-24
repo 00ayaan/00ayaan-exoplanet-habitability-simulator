@@ -10,3 +10,4 @@ export { simulate, hypotheticalPlanet, defaultAtmosphere } from '../pipeline/sim
 export { loadCatalog } from '../data/catalog';
 export { STAR_PRESETS as starPresets, STAR_TYPE_LABELS as starTypeLabels } from '../physics/starPresets';
 export { EARTH_GREENHOUSE } from '../physics/atmosphere';
+export { habitableZoneLimits } from '../physics/habitability';

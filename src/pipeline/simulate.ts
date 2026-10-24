@@ -11,8 +11,8 @@
  * it can run on every slider move (and inside a Capacitor app or worker).
  *
  * Real-planet rule (DESIGN.md adaptation notes): measured star and planet values
- * stay fixed. Only the orbital distance (a_AU), surface pressure and greenhouse
- * strength may be overridden by sliders; such edits are listed in provenance as
+ * stay fixed. Only the orbital distance (a_AU), surface pressure, greenhouse
+ * strength and Bond albedo (never measured) may be overridden by sliders; such edits are listed in provenance as
  * "Modified from archive values". Any other field named in `modifiedFields` is
  * ignored (and a note says so) — it can never change the star, mass or radius.
  *
@@ -46,7 +46,7 @@ export const DEFAULT_ORBIT_SAMPLES = 180;
 const YR_PER_GYR = 1e9;
 
 /** Fields a user may override in real-planet mode. Everything else stays at the archive value. */
-export const OVERRIDABLE_FIELDS: readonly string[] = ['a_AU', 'surfacePressure_bar', 'greenhouse'];
+export const OVERRIDABLE_FIELDS: readonly string[] = ['a_AU', 'surfacePressure_bar', 'greenhouse', 'albedo'];
 
 /** Planet.derivedFields key → archive column reported as missing (for habitability confidence). */
 const DERIVED_TO_MISSING: Readonly<Record<string, string>> = {
@@ -126,6 +126,8 @@ function modifiedLine(input: SimulationInput, ignored: string[]): string | null 
       parts.push(`surfacePressure_bar (assumed default ${fmt(baseAtm.surfacePressure_bar)} bar → ${fmt(input.atmosphere.surfacePressure_bar)} bar)`);
     } else if (f === 'greenhouse') {
       parts.push(`greenhouse (assumed default ${fmt(baseAtm.greenhouse)} → ${fmt(input.atmosphere.greenhouse)})`);
+    } else if (f === 'albedo') {
+      parts.push(`albedo (assumed default ${fmt(baseAtm.albedo)} → ${fmt(input.atmosphere.albedo)})`);
     } else {
       ignored.push(f);
     }

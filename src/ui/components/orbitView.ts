@@ -1,158 +1,207 @@
 /**
- * Orbit view (DESIGN §8): SVG with the star at a FOCUS, circle for e = 0,
- * ellipse for e > 0, periapsis/apoapsis markers, and a planet animated through
- * output.orbit.samples (uniform in time → it speeds up near periapsis).
- * Scales to container width via viewBox. Pauses when the tab is hidden and
- * starts paused under prefers-reduced-motion.
+ * Orbit & habitable zone chart (DESIGN §8). Star at a FOCUS; circle for e = 0,
+ * ellipse for e > 0; periapsis/apoapsis markers; the planet animated through
+ * output.orbit.samples (uniform in time, so it speeds up near periapsis).
+ * The optimistic habitable zone (Kopparapu et al. 2014) is a translucent annulus.
+ *
+ * Auto-scale: the view always fits the planet's orbit. The HZ is fitted too
+ * unless it is far larger than the orbit; then it is clipped and labelled at
+ * the edge, and the same goes for Earth's orbit in "Compare to Earth" mode.
+ * Starts paused under prefers-reduced-motion; stops when the page or the
+ * section is hidden.
  */
 import type { OrbitSample, SimulationOutput } from '../../physics/types';
-import { h, s } from '../dom';
+import { L_SUN } from '../../physics/constants';
+import { h, s, replace } from '../dom';
 import { auFromM, num, sEarth } from '../format';
 import { blackbodyColor } from '../starColor';
+import { habitableZoneLimits } from '../engine';
+import { icon } from '../icons';
+import { Help } from './help';
 
-const W = 400, H = 260, PAD = 34;
-/** Seconds of wall-clock time per animated orbit (visual only). */
+const W = 400, H = 300, PL = 34, PR = 10, PT = 10, PB = 28;
 const SECONDS_PER_ORBIT = 8;
+/** Fit the HZ only while it is at most this many times the orbit's extent. */
+const MAX_FIT_RATIO = 6;
+
+function niceStep(x: number): number {
+  const p = Math.pow(10, Math.floor(Math.log10(x)));
+  const m = x / p;
+  return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
+}
 
 export class OrbitView {
   readonly el: HTMLElement;
-  private svg: SVGSVGElement;
-  private path: SVGPathElement;
-  private star: SVGCircleElement;
-  private glow: SVGCircleElement;
+  private plot: SVGGElement;
   private planet: SVGCircleElement;
-  private periG: SVGGElement;
-  private apoG: SVGGElement;
   private caption: HTMLParagraphElement;
+  private legend: HTMLUListElement;
   private rDist: HTMLElement;
   private rFlux: HTMLElement;
   private rTeq: HTMLElement;
   private playBtn: HTMLButtonElement;
+  private cmpBtn: HTMLButtonElement;
 
   private samples: OrbitSample[] = [];
   private scale = 1;
-  private cx = W / 2;
-  private cy = H / 2;
-  private phase = 0; // 0..1 of an orbit
+  private cx = 0;
+  private cy = 0;
+  private phase = 0;
   private playing: boolean;
+  private active = true;
   private raf = 0;
   private lastT = 0;
   private lastIdx = -1;
 
-  constructor() {
+  constructor(onCompare: (on: boolean) => void) {
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.playing = !reduce;
 
-    this.path = s('path', { class: 'orbit__path', fill: 'none' });
-    this.glow = s('circle', { class: 'orbit__glow' });
-    this.star = s('circle', { class: 'orbit__star' });
-    this.planet = s('circle', { class: 'orbit__planet', r: 6 });
-    this.periG = s('g', { class: 'orbit__apsis' });
-    this.apoG = s('g', { class: 'orbit__apsis' });
-    this.svg = s('svg', { viewBox: `0 0 ${W} ${H}`, class: 'orbit__svg', role: 'img', 'aria-labelledby': 'orbit-cap' },
-      s('defs', {}, s('radialGradient', { id: 'starglow' },
-        s('stop', { offset: '0%', 'stop-color': 'currentColor', 'stop-opacity': '0.55' }),
-        s('stop', { offset: '100%', 'stop-color': 'currentColor', 'stop-opacity': '0' }))),
-      this.path, this.periG, this.apoG, this.glow, this.star, this.planet);
-    this.caption = h('p', { id: 'orbit-cap', class: 'visually-hidden' });
+    this.plot = s('g');
+    this.planet = s('circle', { class: 'ov__planet', r: 5.5 });
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ov__svg', role: 'img', 'aria-labelledby': 'ov-cap' },
+      s('defs', {}, s('clipPath', { id: 'ov-clip' }, s('rect', { x: PL, y: PT, width: W - PL - PR, height: H - PT - PB }))),
+      this.plot, this.planet);
+    this.caption = h('p', { id: 'ov-cap', class: 'visually-hidden' });
+    this.legend = h('ul', { class: 'ov__legend' });
 
     const cell = (label: string) => {
-      const v = h('span', { class: 'readout__v' }, '—');
-      return [v, h('div', { class: 'readout__cell' }, h('span', { class: 'readout__k' }, label), v)] as const;
+      const v = h('span', { class: 'ov__rv' }, '—');
+      return [v, h('div', { class: 'ov__rc' }, h('span', { class: 'micro' }, label), v)] as const;
     };
     const [d, dc] = cell('Distance');
     const [f, fc] = cell('Flux');
-    const [t, tc] = cell('T_eq (instant.)');
+    const [t, tc] = cell('T_eq now');
     this.rDist = d; this.rFlux = f; this.rTeq = t;
 
-    this.playBtn = h('button', { type: 'button', class: 'btn btn--ghost' });
+    this.playBtn = h('button', { type: 'button', class: 'btn btn--outline btn--sm' });
     this.playBtn.addEventListener('click', () => this.setPlaying(!this.playing));
+    this.cmpBtn = h('button', { type: 'button', role: 'switch', class: 'switch', 'aria-checked': 'false' },
+      h('span', { class: 'switch__track', 'aria-hidden': 'true' }, h('span', { class: 'switch__thumb' })), 'Compare to Earth');
+    this.cmpBtn.addEventListener('click', () => onCompare(this.cmpBtn.getAttribute('aria-checked') !== 'true'));
 
-    this.el = h('section', { class: 'card orbit', 'aria-labelledby': 'orbit-h' },
-      h('div', { class: 'card__head' }, h('h2', { id: 'orbit-h', class: 'card__title' }, 'Orbit'), this.playBtn),
-      h('div', { class: 'orbit__frame' }, this.svg), this.caption,
-      h('div', { class: 'readout' }, dc, fc, tc),
-      h('p', { class: 'hint' }, 'Instantaneous T_eq; real climates lag behind (DESIGN §8). Not to scale: star size is exaggerated; animation speed is not real time.'));
+    this.el = h('section', { class: 'panel ov', 'aria-labelledby': 'ov-h' },
+      h('div', { class: 'panel__head' },
+        h('h2', { id: 'ov-h', class: 'panel__title' }, 'Orbit & habitable zone',
+          new Help('the orbit chart', 'Top-down view of the orbit with the star at one focus. The green ring is the optimistic habitable zone for this star (Kopparapu et al. 2014): where starlight could keep surface water liquid on an Earth-like planet. Not to scale: the star and planet dots are enlarged.').el),
+        this.cmpBtn),
+      h('div', { class: 'ov__frame' }, svg), this.caption,
+      this.legend,
+      h('div', { class: 'ov__readout' }, dc, fc, tc, this.playBtn),
+      h('p', { class: 'muted small' }, 'Instantaneous T_eq; real climates lag behind (DESIGN §8). Animation speed is not real time.'));
 
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.stop(); else if (this.playing) this.start();
-    });
+    document.addEventListener('visibilitychange', () => this.sync());
     this.syncButton();
   }
 
-  update(out: SimulationOutput | null): void {
+  /** Called by the app when the section is shown/hidden (phone tabs). */
+  setActive(active: boolean): void {
+    this.active = active;
+    this.sync();
+  }
+
+  update(out: SimulationOutput | null, compare: boolean): void {
+    this.cmpBtn.setAttribute('aria-checked', String(compare));
     if (!out || out.orbit.samples.length === 0) {
       this.samples = [];
-      this.path.setAttribute('d', '');
+      replace(this.plot);
+      replace(this.legend);
       this.caption.textContent = 'No orbit to display.';
-      this.stop();
+      this.sync();
       return;
     }
     this.samples = out.orbit.samples;
     const e = out.input.planet.ecc;
-    const peri = out.orbit.periapsis.value, apo = out.orbit.apoapsis.value;
+    const peri = auFromM(out.orbit.periapsis.value), apo = auFromM(out.orbit.apoapsis.value);
     const a = (peri + apo) / 2;
     const b = a * Math.sqrt(1 - e * e);
-    // Bounding box in orbital-plane metres (star at origin, periapsis on +x).
-    const minX = -apo, maxX = peri, minY = -b, maxY = b;
-    this.scale = Math.min((W - 2 * PAD) / (maxX - minX), (H - 2 * PAD) / (maxY - minY));
-    this.cx = W / 2 - ((minX + maxX) / 2) * this.scale;
-    this.cy = H / 2;
 
-    // Path from samples (true ellipse); fallback to analytic ellipse for tiny n.
-    const pts = this.samples.map((p) => this.xy(p.x_m, p.y_m));
-    this.path.setAttribute('d', pts.length > 8
-      ? `M${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`
-      : this.ellipsePath(a, b, e));
+    // Habitable zone (optimistic: recent Venus → early Mars), d = √(L/S) in AU.
+    const L = out.star.luminosity.value / L_SUN;
+    let hzIn: number | null = null, hzOut: number | null = null;
+    try {
+      const hz = habitableZoneLimits(out.input.star.teff_K).value;
+      hzIn = Math.sqrt(L / hz.recentVenus);
+      hzOut = Math.sqrt(L / hz.earlyMars);
+      if (!Number.isFinite(hzIn) || !Number.isFinite(hzOut)) hzIn = hzOut = null;
+    } catch { hzIn = hzOut = null; }
 
-    // Star: color from Teff, size from log radius (not to scale).
-    const teff = out.input.star.teff_K;
-    const rs = Math.min(16, Math.max(5, 9 + 3 * Math.log10(Math.max(1e-3, out.input.star.radius_Rsun))));
-    const color = blackbodyColor(teff);
-    for (const c of [this.star, this.glow]) { c.setAttribute('cx', String(this.cx)); c.setAttribute('cy', String(this.cy)); }
-    this.star.setAttribute('r', String(rs));
-    this.star.setAttribute('fill', color);
-    this.glow.setAttribute('r', String(rs * 2.6));
-    this.glow.setAttribute('fill', 'url(#starglow)');
-    this.glow.style.color = color;
+    // Extent (AU) of the square region around the star.
+    let R = apo;
+    if (hzOut != null) R = Math.max(R, Math.min(hzOut, MAX_FIT_RATIO * apo));
+    R *= 1.08;
+    const pw = W - PL - PR, ph = H - PT - PB;
+    this.scale = Math.min(pw, ph) / (2 * R);
+    this.cx = PL + pw / 2;
+    this.cy = PT + ph / 2;
+    const xr = pw / 2 / this.scale, yr = ph / 2 / this.scale; // half-extents in AU
 
-    this.drawApsis(this.periG, peri, 0, 'Periapsis', e > 1e-4);
-    this.drawApsis(this.apoG, -apo, Math.PI, 'Apoapsis', e > 1e-4);
+    const nodes: SVGElement[] = [s('rect', { x: PL, y: PT, width: pw, height: ph, class: 'ov__bg' })];
+    // Grid + ticks
+    const step = niceStep(Math.max(xr, yr) / 2.5);
+    const grid = s('g', { class: 'ov__grid' });
+    const labels = s('g', { class: 'ov__tick' });
+    for (let k = -Math.floor(xr / step); k <= Math.floor(xr / step); k++) {
+      const x = this.cx + k * step * this.scale;
+      grid.append(s('line', { x1: x, y1: PT, x2: x, y2: PT + ph }));
+      labels.append(s('text', { x, y: H - PB + 14, 'text-anchor': 'middle' }, num(k * step, 2)));
+    }
+    for (let k = -Math.floor(yr / step); k <= Math.floor(yr / step); k++) {
+      const y = this.cy - k * step * this.scale;
+      grid.append(s('line', { x1: PL, y1: y, x2: PL + pw, y2: y }));
+      labels.append(s('text', { x: PL - 5, y: y + 3.5, 'text-anchor': 'end' }, num(k * step, 2)));
+    }
+    labels.append(s('text', { x: W - PR, y: H - 4, 'text-anchor': 'end', class: 'ov__axis' }, 'AU'));
+    nodes.push(grid, labels);
 
-    this.caption.textContent = e > 1e-4
-      ? `Elliptical orbit, eccentricity ${num(e, 2)}, periapsis ${num(auFromM(peri))} AU, apoapsis ${num(auFromM(apo))} AU, star at one focus.`
-      : `Circular orbit of radius ${num(auFromM(a))} AU.`;
+    const clipped = s('g', { 'clip-path': 'url(#ov-clip)' });
+    const edge: string[] = [];
+    const circ = (r: number) => `M${this.cx - r * this.scale},${this.cy}a${r * this.scale},${r * this.scale} 0 1 0 ${2 * r * this.scale},0a${r * this.scale},${r * this.scale} 0 1 0 ${-2 * r * this.scale},0`;
+    if (hzIn != null && hzOut != null) {
+      clipped.append(s('path', { d: `${circ(hzOut)}${circ(hzIn)}`, 'fill-rule': 'evenodd', class: 'ov__hz' }));
+      if (hzIn > R) edge.push(`Habitable zone (${num(hzIn)}–${num(hzOut)} AU) →`);
+    }
+    if (compare) {
+      if (1 <= R * 1.25) clipped.append(s('path', { d: circ(1), class: 'ov__earth' }));
+      if (1 > R) edge.push('Earth orbit (1 AU) →');
+    }
+    // Planet orbit: true ellipse from samples, star at the focus (origin).
+    const pts = this.samples.map((p) => this.xy(auFromM(p.x_m), auFromM(p.y_m)));
+    clipped.append(s('path', { d: `M${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`, class: 'ov__orbit' }));
+    if (e > 1e-4) {
+      const [px, py] = this.xy(peri, 0), [ax] = this.xy(-apo, 0);
+      clipped.append(
+        s('line', { x1: ax, y1: py, x2: px, y2: py, class: 'ov__apsis-line' }),
+        s('circle', { cx: px, cy: py, r: 3, class: 'ov__apsis' }),
+        s('circle', { cx: ax, cy: py, r: 3, class: 'ov__apsis' }),
+        s('text', { x: Math.min(px + 4, PL + pw - 2), y: py - 8, 'text-anchor': px + 60 > PL + pw ? 'end' : 'start', class: 'ov__lbl' }, `Periapsis ${num(peri)} AU`),
+        s('text', { x: Math.max(ax - 4, PL + 2), y: py + 16, 'text-anchor': ax - 60 < PL ? 'start' : 'end', class: 'ov__lbl' }, `Apoapsis ${num(apo)} AU`));
+    }
+    const color = blackbodyColor(out.input.star.teff_K);
+    clipped.append(
+      s('circle', { cx: this.cx, cy: this.cy, r: 11, fill: color, class: 'ov__ring' }),
+      s('circle', { cx: this.cx, cy: this.cy, r: 6.5, fill: color, class: 'ov__star' }));
+    nodes.push(clipped);
+    edge.forEach((t, i) => nodes.push(s('text', { x: PL + pw - 6, y: PT + 14 + i * 14, 'text-anchor': 'end', class: 'ov__edge' }, t)));
+    replace(this.plot, ...nodes);
+
+    const sw = (cls: string) => h('span', { class: `ov__sw ${cls}`, 'aria-hidden': 'true' });
+    replace(this.legend,
+      hzIn != null && hzOut != null ? h('li', {}, sw('sw--hz'), `Habitable zone (${num(hzIn)}–${num(hzOut)} AU)`) : h('li', {}, 'Habitable zone unavailable for this star'),
+      h('li', {}, sw('sw--orbit'), `Planet orbit (${num(a)} AU)`),
+      compare ? h('li', {}, sw('sw--earth'), 'Earth orbit (1 AU)') : null,
+      h('li', {}, h('span', { class: 'ov__sw sw--star', style: `background:${color}`, 'aria-hidden': 'true' }), 'Star'),
+      h('li', {}, sw('sw--planet'), 'Planet'));
+
+    this.caption.textContent = `${e > 1e-4 ? `Elliptical orbit, eccentricity ${num(e, 2)}, periapsis ${num(peri)} AU, apoapsis ${num(apo)} AU, star at one focus.` : `Circular orbit of radius ${num(a)} AU.`}${hzIn != null && hzOut != null ? ` Habitable zone ${num(hzIn)} to ${num(hzOut)} AU.` : ''}`;
 
     this.lastIdx = -1;
     this.renderFrame();
-    if (this.playing && !document.hidden) this.start();
+    this.sync();
   }
 
-  private ellipsePath(a: number, b: number, e: number): string {
-    const c = a * e;
-    const [x1, y] = this.xy(-c - a, 0);
-    const [x2] = this.xy(-c + a, 0);
-    const rx = a * this.scale, ry = b * this.scale;
-    return `M${x1},${y}A${rx},${ry} 0 1 0 ${x2},${y}A${rx},${ry} 0 1 0 ${x1},${y}Z`;
-  }
-
-  private drawApsis(g: SVGGElement, x_m: number, _ang: number, label: string, show: boolean): void {
-    g.replaceChildren();
-    if (!show) return;
-    const [x, y] = this.xy(x_m, 0);
-    const right = x_m > 0;
-    const d = Math.abs(x_m);
-    g.append(
-      s('line', { x1: this.cx, y1: y, x2: x, y2: y, class: 'orbit__axis' }),
-      s('circle', { cx: x, cy: y, r: 3.5, class: 'orbit__apsis-dot' }),
-      s('text', { x: right ? Math.min(x, W - 4) : Math.max(x, 4), y: y - 12, 'text-anchor': right ? 'end' : 'start', class: 'orbit__label' }, label),
-      s('text', { x: right ? Math.min(x, W - 4) : Math.max(x, 4), y: y + 20, 'text-anchor': right ? 'end' : 'start', class: 'orbit__label orbit__label--v' }, `${num(auFromM(d))} AU`),
-    );
-  }
-
-  private xy(x_m: number, y_m: number): [number, number] {
-    // SVG y grows downward; flip so the orbit runs counter-clockwise.
-    return [this.cx + x_m * this.scale, this.cy - y_m * this.scale];
+  private xy(x_au: number, y_au: number): [number, number] {
+    return [this.cx + x_au * this.scale, this.cy - y_au * this.scale];
   }
 
   private renderFrame(): void {
@@ -162,7 +211,7 @@ export class OrbitView {
     if (idx === this.lastIdx) return;
     this.lastIdx = idx;
     const p = this.samples[idx]!;
-    const [x, y] = this.xy(p.x_m, p.y_m);
+    const [x, y] = this.xy(auFromM(p.x_m), auFromM(p.y_m));
     this.planet.setAttribute('cx', x.toFixed(1));
     this.planet.setAttribute('cy', y.toFixed(1));
     this.rDist.textContent = `${num(auFromM(p.distance_m))} AU`;
@@ -178,25 +227,20 @@ export class OrbitView {
     this.raf = requestAnimationFrame(this.tick);
   };
 
-  private start(): void {
-    if (this.raf || !this.samples.length) return;
-    this.lastT = 0;
-    this.raf = requestAnimationFrame(this.tick);
-  }
-
-  private stop(): void {
-    if (this.raf) cancelAnimationFrame(this.raf);
-    this.raf = 0;
+  private sync(): void {
+    const run = this.playing && this.active && !document.hidden && this.samples.length > 0;
+    if (run && !this.raf) { this.lastT = 0; this.raf = requestAnimationFrame(this.tick); }
+    else if (!run && this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
   }
 
   private setPlaying(p: boolean): void {
     this.playing = p;
-    if (p) this.start(); else this.stop();
+    this.sync();
     this.syncButton();
   }
 
   private syncButton(): void {
-    this.playBtn.textContent = this.playing ? '❚❚ Pause' : '▶ Play';
+    replace(this.playBtn, icon(this.playing ? 'pause' : 'play', 14), this.playing ? 'Pause' : 'Play');
     this.playBtn.setAttribute('aria-label', this.playing ? 'Pause orbit animation' : 'Play orbit animation');
   }
 }
