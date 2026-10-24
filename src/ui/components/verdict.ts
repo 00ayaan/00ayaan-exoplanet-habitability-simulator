@@ -5,7 +5,7 @@
  * values and the reason; then confidence + reasons and the disclaimer.
  */
 import type { HabitabilityCheck, HabitabilityResult, HabitabilityStatus } from '../../physics/types';
-import { h, replace } from '../dom';
+import { h, renderIfChanged, replace, setText } from '../dom';
 import { icon } from '../icons';
 
 export const STATUS_BADGE: Record<HabitabilityStatus, { icon: string; cls: 'good' | 'warn' | 'bad' }> = {
@@ -44,8 +44,8 @@ export class VerdictCard {
   private conf: HTMLDivElement;
   private disclaimer: HTMLParagraphElement;
   private lastKey = '';
-  /** Which pills the user expanded, kept across re-renders while sliding. */
-  private open = new Set<string>();
+  private pillIds = '';
+  private pills: PillRefs[] = [];
 
   constructor() {
     this.live = h('div', { class: 'verdict__live', 'aria-live': 'polite', 'aria-atomic': 'true' });
@@ -64,8 +64,8 @@ export class VerdictCard {
       this.el.className = 'panel verdict';
       replace(this.live, h('p', { class: 'verdict__status' }, 'No result yet'));
       this.summary.textContent = 'Pick a planet or move a slider to run the model.';
-      replace(this.checks); replace(this.conf);
-      this.lastKey = '';
+      replace(this.checks); renderIfChanged(this.conf, '∅', () => replace(this.conf));
+      this.lastKey = ''; this.pillIds = '';
       return;
     }
     const b = STATUS_BADGE[r.status];
@@ -75,31 +75,58 @@ export class VerdictCard {
       this.lastKey = key;
       replace(this.live, h('p', { class: 'verdict__status' }, icon(b.icon, 30), h('span', {}, r.status)));
     }
-    this.summary.textContent = summary;
-    replace(this.checks, ...r.checks.map((c) => {
-      const p = PILL(c.passed);
-      const [obs, tgt] = shortVals(c);
-      const d = h('details', { class: `pill pill--${p.c}` },
-        h('summary', { class: 'pill__sum' },
-          h('span', { class: 'pill__icon' }, icon(p.i, 18)),
-          h('span', { class: 'pill__head' },
-            h('span', { class: 'visually-hidden' }, `${p.t}: `),
-            h('span', { class: 'pill__label' }, c.label),
-            h('span', { class: 'pill__weight' }, c.weight)),
-          h('span', { class: 'pill__vals' },
-            h('span', { class: 'pill__obs' }, obs),
-            h('span', { class: 'pill__target' }, h('span', { class: 'visually-hidden' }, 'target '), tgt)),
-          h('span', { class: 'pill__chev' }, icon('chevron', 16))),
-        h('div', { class: 'pill__more' },
-          h('p', { class: 'pill__full' }, `Observed ${c.observed || 'unknown'}. Target ${c.target}.`),
-          h('p', {}, c.reason)));
-      d.open = this.open.has(c.id);
-      d.addEventListener('toggle', () => { if (d.open) this.open.add(c.id); else this.open.delete(c.id); });
-      return h('li', {}, d);
-    }));
-    replace(this.conf,
+    setText(this.summary, summary);
+    // Pills are rebuilt only when the set of checks changes; otherwise updated in place
+    // (keeps any pill the user expanded open, and keeps slider drags cheap).
+    const ids = r.checks.map((c) => c.id).join(',');
+    if (ids !== this.pillIds) {
+      this.pillIds = ids;
+      this.pills = r.checks.map(() => this.buildPill());
+      replace(this.checks, ...this.pills.map((p) => h('li', {}, p.root)));
+    }
+    r.checks.forEach((c, i) => this.fillPill(this.pills[i]!, c));
+    renderIfChanged(this.conf, `${r.confidence}|${r.confidenceReasons.join('|')}`, () => replace(this.conf,
       h('p', { class: 'verdict__conflabel' }, `Confidence: ${r.confidence}`),
-      r.confidenceReasons.length ? h('ul', {}, ...r.confidenceReasons.map((x) => h('li', {}, x))) : null);
-    if (r.disclaimer) this.disclaimer.textContent = r.disclaimer;
+      r.confidenceReasons.length ? h('ul', {}, ...r.confidenceReasons.map((x) => h('li', {}, x))) : null));
+    if (r.disclaimer) setText(this.disclaimer, r.disclaimer);
   }
+
+  private buildPill(): PillRefs {
+    const p = {
+      icon: h('span', { class: 'pill__icon' }), state: h('span', { class: 'visually-hidden' }),
+      label: h('span', { class: 'pill__label' }), weight: h('span', { class: 'pill__weight' }),
+      obs: h('span', { class: 'pill__obs' }), target: document.createTextNode(''),
+      full: h('p', { class: 'pill__full' }), reason: h('p', {}),
+    } as Omit<PillRefs, 'root' | 'kind'>;
+    const root = h('details', { class: 'pill' },
+      h('summary', { class: 'pill__sum' },
+        p.icon,
+        h('span', { class: 'pill__head' }, p.state, p.label, p.weight),
+        h('span', { class: 'pill__vals' }, p.obs, h('span', { class: 'pill__target' }, h('span', { class: 'visually-hidden' }, 'target '), p.target)),
+        h('span', { class: 'pill__chev' }, icon('chevron', 16))),
+      h('div', { class: 'pill__more' }, p.full, p.reason));
+    return { ...p, root, kind: '' };
+  }
+
+  private fillPill(p: PillRefs, c: HabitabilityCheck): void {
+    const k = PILL(c.passed);
+    if (p.kind !== k.c) {
+      p.kind = k.c;
+      p.root.className = `pill pill--${k.c}`;
+      replace(p.icon, icon(k.i, 18));
+      setText(p.state, `${k.t}: `);
+    }
+    const [obs, tgt] = shortVals(c);
+    setText(p.label, c.label);
+    setText(p.weight, c.weight);
+    setText(p.obs, obs);
+    if (p.target.data !== tgt) p.target.data = tgt;
+    setText(p.full, `Observed ${c.observed || 'unknown'}. Target ${c.target}.`);
+    setText(p.reason, c.reason);
+  }
+}
+
+interface PillRefs {
+  root: HTMLDetailsElement; kind: string; icon: HTMLSpanElement; state: HTMLSpanElement; label: HTMLSpanElement;
+  weight: HTMLSpanElement; obs: HTMLSpanElement; target: Text; full: HTMLParagraphElement; reason: HTMLParagraphElement;
 }

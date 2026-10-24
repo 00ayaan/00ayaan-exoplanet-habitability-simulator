@@ -4,7 +4,7 @@
  * Radio rows, so it stays a single accessible choice.
  */
 import type { Catalog } from '../../physics/types';
-import { h, nextId, replace } from '../dom';
+import { h, nextId, replace, setText } from '../dom';
 import { num } from '../format';
 import { icon } from '../icons';
 
@@ -52,8 +52,8 @@ export class PlanetPicker {
     if (this.search.value !== p.filter) this.search.value = p.filter;
     const entries = p.catalog?.entries ?? [];
     const date = p.catalog ? p.catalog.generatedAt.slice(0, 10) : '';
-    this.meta.textContent = p.status === 'loading' ? 'Loading snapshot…'
-      : entries.length ? `Snapshot ${date} · ${entries.length} planet${entries.length === 1 ? '' : 's'}` : 'No planet data available';
+    setText(this.meta, p.status === 'loading' ? 'Loading snapshot…'
+      : entries.length ? `Snapshot ${date} · ${entries.length} planet${entries.length === 1 ? '' : 's'}` : 'No planet data available');
 
     const key = `${date}|${entries.length}|${p.filter}|${p.selectedId}`;
     if (key === this.lastKey) return;

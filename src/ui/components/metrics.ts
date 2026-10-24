@@ -5,7 +5,7 @@
  */
 import type { Result, SimulationOutput } from '../../physics/types';
 import { L_SUN } from '../../physics/constants';
-import { h, replace } from '../dom';
+import { h, setText } from '../dom';
 import { celsius, days, gEarth, num, plural, waterPhaseLabel, years } from '../format';
 import { Help } from './help';
 
@@ -65,33 +65,55 @@ const METRICS: Metric[] = [
     sub: () => 'qualitative indicator' },
 ];
 
+interface CardRefs { value: HTMLParagraphElement; text: Text; unit: HTMLSpanElement; sub: HTMLParagraphElement; foot: HTMLParagraphElement; earth: HTMLSpanElement; ratio: HTMLSpanElement }
+
+/** Cards are built once; each run only updates the text that changed. */
 export class MetricGrid {
   readonly el: HTMLDivElement;
   private out: SimulationOutput | null = null;
+  private cards: CardRefs[] = [];
+  private empty: HTMLParagraphElement;
 
   constructor() {
-    this.el = h('div', { class: 'metrics' });
+    this.empty = h('p', { class: 'muted' }, 'Pick a planet or move a slider to run the model.');
+    const nodes = METRICS.map((m) => {
+      const text = document.createTextNode('');
+      const unit = h('span', { class: 'metric__unit' });
+      const value = h('p', { class: 'metric__value' }, text, unit);
+      const sub = h('p', { class: 'metric__sub' });
+      const earth = h('span', { class: 'metric__earth' });
+      const ratio = h('span', {});
+      const foot = h('p', { class: 'metric__foot', hidden: true }, earth, ratio);
+      this.cards.push({ value, text, unit, sub, foot, earth, ratio });
+      return h('article', { class: 'metric' },
+        h('h3', { class: 'micro metric__label' }, m.label, new Help(m.label, () => this.helpFor(m)).el),
+        value, sub, foot);
+    });
+    this.el = h('div', { class: 'metrics' }, this.empty, ...nodes);
   }
 
   update(out: SimulationOutput | null, earth: SimulationOutput | null): void {
     this.out = out;
-    if (!out) { replace(this.el, h('p', { class: 'muted' }, 'Pick a planet or move a slider to run the model.')); return; }
-    replace(this.el, ...METRICS.map((m) => {
+    this.empty.hidden = !!out;
+    METRICS.forEach((m, i) => {
+      const c = this.cards[i]!;
+      const card = c.value.parentElement!;
+      card.hidden = !out;
+      if (!out) return;
       const [v, unit] = m.value(out);
-      let foot: HTMLElement | null = null;
+      if (c.text.data !== v) c.text.data = v;
+      c.value.classList.toggle('is-unknown', v === 'unknown');
+      setText(c.unit, unit);
+      c.unit.hidden = !unit;
+      setText(c.sub, m.sub(out));
+      c.foot.hidden = !earth;
       if (earth) {
         const [ev, eu] = m.value(earth);
+        setText(c.earth, `Earth: ${ev}${eu ? ' ' + eu : ''}`);
         const a = m.ratio?.(out), b = m.ratio?.(earth);
-        foot = h('p', { class: 'metric__foot' },
-          h('span', { class: 'metric__earth' }, `Earth: ${ev}${eu ? ' ' + eu : ''}`),
-          a != null && b ? h('span', {}, `${num(a / b)}× Earth`) : null);
+        setText(c.ratio, a != null && b ? `${num(a / b)}× Earth` : '');
       }
-      return h('article', { class: 'metric' },
-        h('h3', { class: 'micro metric__label' }, m.label, new Help(m.label, () => this.helpFor(m)).el),
-        h('p', { class: `metric__value${v === 'unknown' ? ' is-unknown' : ''}` }, v, unit ? h('span', { class: 'metric__unit' }, unit) : null),
-        h('p', { class: 'metric__sub' }, m.sub(out)),
-        foot);
-    }));
+    });
   }
 
   private helpFor(m: Metric): (Node | string)[] {

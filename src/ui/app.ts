@@ -5,7 +5,7 @@
  * state, hash = phone section) and the phone section tabs.
  */
 import type { SimulationOutput, StarType } from '../physics/types';
-import { h, replace } from './dom';
+import { h, renderIfChanged, replace, setText } from './dom';
 import { kelvin, celsius, num } from './format';
 import { icon } from './icons';
 import { EARTH_GREENHOUSE, loadCatalog, simulate, starPresets, hypotheticalPlanet } from './engine';
@@ -69,6 +69,7 @@ export function mountApp(root: HTMLElement): void {
   // ---- update scheduling + URL sync --------------------------------------
   let pending = 0;
   let needsSim = true;
+  const dirty = { verdict: true, results: true, orbit: true, model: true };
   const scheduleUpdate = (sim = true) => {
     needsSim ||= sim;
     if (!pending) pending = requestAnimationFrame(() => { pending = 0; update(); });
@@ -336,6 +337,7 @@ export function mountApp(root: HTMLElement): void {
       if (TABS[i]!.id === state.tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
     orbit.setActive(isDesktop() || state.tab === 'orbit');
+    if (state.output) renderSections();
     if (scroll && !isDesktop()) {
       const stick = root.querySelector('.topbar')?.getBoundingClientRect().height ?? 0;
       const top = main.getBoundingClientRect().top + window.scrollY - stick;
@@ -363,12 +365,14 @@ export function mountApp(root: HTMLElement): void {
     const entry = selectedEntry(state);
 
     // Scenario header + tabs
-    nameEl.textContent = scenarioName(state);
+    setText(nameEl, scenarioName(state));
     scenarioTabs.update({ value: state.scenario, options: [
       { value: 'hypothetical', label: 'Hypothetical' }, { value: 'preset', label: 'Known planet' },
       { value: 'nasa', label: 'NASA search', disabled: !usable && state.catalogStatus !== 'loading' },
     ] });
-    renderDataBanner(bannerEl, { real: real || state.scenario === 'nasa', status: state.catalogStatus, isFixture: !!state.catalog?.isFixture });
+    const bannerReal = real || state.scenario === 'nasa';
+    renderIfChanged(bannerEl, `${bannerReal}|${state.catalogStatus}|${!!state.catalog?.isFixture}`,
+      () => renderDataBanner(bannerEl, { real: bannerReal, status: state.catalogStatus, isFixture: !!state.catalog?.isFixture }));
     hypoBody.hidden = state.scenario !== 'hypothetical';
     knownBody.hidden = state.scenario !== 'preset';
     picker.el.hidden = state.scenario !== 'nasa';
@@ -384,14 +388,16 @@ export function mountApp(root: HTMLElement): void {
         feats.length ? h('optgroup', { label: 'Exoplanets (NASA Exoplanet Archive)' }, ...feats.map((e) => h('option', { value: `planet:${e.id}` }, `${e.planet.name} (${e.star.name})`))) : null);
     }
     const kv = real ? (entry && feats.includes(entry) ? `planet:${entry.id}` : '') : (presetById(state.preset) ? `preset:${state.preset}` : '');
-    knownSelect.value = kv;
+    if (knownSelect.value !== kv) knownSelect.value = kv;
     const p = presetById(state.preset);
-    knownDesc.textContent = real
+    const knownText = real
       ? (entry ? `${entry.star.name} (${entry.star.spectralType || 'class unknown'}), a = ${num(entry.planet.a_AU)} AU, radius ${entry.planet.radius_Rearth == null ? 'unknown' : num(entry.planet.radius_Rearth) + ' R⊕'}. Measured values stay fixed.` : '')
       : p ? (hypoDirty(state) ? `Started from ${p.name}; you have changed some values.` : p.note) : 'Pick Earth, Venus or Mars, or a well-known exoplanet.';
+    setText(knownDesc, knownText);
     picker.update({ catalog: state.catalog, status: state.catalogStatus, filter: state.filter, selectedId: state.selectedId });
 
     // Modified chip (real)
+    renderIfChanged(modChip, `${real}|${[...state.modified].join(',')}`, () => {
     if (real && state.modified.size) {
       const btn = h('button', { type: 'button', class: 'btn btn--pill' }, icon('reset', 14), 'Reset to measured');
       btn.addEventListener('click', reset);
@@ -400,14 +406,16 @@ export function mountApp(root: HTMLElement): void {
     } else if (real) {
       replace(modChip, h('p', { class: 'muted small' }, 'Distance is the measured value. Pressure, greenhouse strength and albedo are assumed: they are not measured for exoplanets.'));
     } else replace(modChip);
+    });
 
     // Host star
     const star = real && entry ? entry.star : starPresets[state.starType];
     starSelect.disabled = real;
     catalogOpt.hidden = !real;
-    if (real) { catalogOpt.textContent = `${entry?.star.spectralType || 'Unknown class'} (catalog)`; starSelect.value = 'catalog'; }
-    else starSelect.value = state.starType;
-    starDot.style.background = blackbodyColor(star.teff_K);
+    if (real) { setText(catalogOpt, `${entry?.star.spectralType || 'Unknown class'} (catalog)`); if (starSelect.value !== 'catalog') starSelect.value = 'catalog'; }
+    else if (starSelect.value !== state.starType) starSelect.value = state.starType;
+    const dot = blackbodyColor(star.teff_K);
+    if (starDot.dataset.c !== dot) { starDot.dataset.c = dot; starDot.style.background = dot; }
     setBadge(starBadge, sourceTag(state, 'star'));
 
     // Sliders
@@ -419,21 +427,22 @@ export function mountApp(root: HTMLElement): void {
     mSlider.update(real ? entry?.planet.mass_Mearth ?? null : c.mass_Mearth, sourceTag(state, 'mass_Mearth'), real);
     rSlider.update(real ? entry?.planet.radius_Rearth ?? null : c.radius_Rearth, sourceTag(state, 'radius_Rearth'), real);
     const ecc = real ? entry?.planet.ecc : 0;
-    eccLine.textContent = real
+    const eccText = real
       ? `Eccentricity e = ${ecc == null ? 'unknown' : num(ecc, 3)} (read-only${entry?.missing.includes('pl_orbeccen') ? '; not measured, 0 used' : ''})`
       : 'Eccentricity e = 0 (hypothetical planets use circular orbits, DESIGN §8)';
+    setText(eccLine, eccText);
     setBadge(eccBadge, sourceTag(state, 'ecc'));
     const mass = real ? entry?.planet.mass_Mearth : c.mass_Mearth;
     const rad = real ? entry?.planet.radius_Rearth : c.radius_Rearth;
-    advSummaryVals.textContent = `A ${c.albedo.toFixed(2)}, ${mass == null ? '? ' : num(mass)} M⊕, ${rad == null ? '? ' : num(rad)} R⊕`;
+    setText(advSummaryVals, `A ${c.albedo.toFixed(2)}, ${mass == null ? '? ' : num(mass)} M⊕, ${rad == null ? '? ' : num(rad)} R⊕`);
     resetBtn.disabled = real ? state.modified.size === 0 : !hypoDirty(state);
     resetBtn.setAttribute('aria-label', real ? 'Reset to measured values' : `Reset to ${presetById(state.preset)?.name ?? 'defaults'}`);
 
-    renderCatalogDetails(catalogEl, real ? entry : null);
+    renderIfChanged(catalogEl, real && entry ? entry.id : '∅', () => renderCatalogDetails(catalogEl, real ? entry : null));
     catalogEl.hidden = !real || !entry;
 
     const snap = state.catalog ? (state.catalog.isFixture ? 'dev sample' : `snapshot ${state.catalog.generatedAt.slice(0, 10)}`) : 'not loaded';
-    footerText.textContent = `Deterministic model · constants CODATA 2018 / IAU 2015 · planet data: NASA Exoplanet Archive ${snap}.`;
+    setText(footerText, `Deterministic model · constants CODATA 2018 / IAU 2015 · planet data: NASA Exoplanet Archive ${snap}.`);
 
     if (needsSim) {
       needsSim = false;
@@ -445,23 +454,46 @@ export function mountApp(root: HTMLElement): void {
         state.output = null;
         state.error = err instanceof Error ? err.message : String(err);
       }
-      if (state.error) replace(errorEl, h('p', { class: 'banner banner--rose' }, icon('info', 16), h('span', {}, `Model error: ${state.error}`)));
-      else replace(errorEl);
+      renderIfChanged(errorEl, state.error ?? '', () => replace(errorEl,
+        state.error ? h('p', { class: 'banner banner--rose' }, icon('info', 16), h('span', {}, `Model error: ${state.error}`)) : null));
       const out = state.output;
-      renderStarStats(starStats, star, sourceTag(state, 'star'), out, real);
+      const L = out?.star.luminosity.value;
+      renderIfChanged(starStats, `${star.name}|${star.teff_K}|${star.radius_Rsun}|${star.mass_Msun}|${L}|${sourceTag(state, 'star')}|${real}`,
+        () => renderStarStats(starStats, star, sourceTag(state, 'star'), out, real));
+      resultBar.update(out);
+      dirty.verdict = dirty.results = dirty.orbit = dirty.model = true;
+    }
+    renderSections();
+    scheduleUrl();
+  }
+
+  /** Results / Orbit / Model are only rendered while visible (always on desktop; the active tab on phones). */
+  function renderSections(): void {
+    const show = (sec: TabId) => isDesktop() || state.tab === sec;
+    const out = state.output;
+    // The verdict is cheap (updated in place) and always kept current, even off-screen.
+    if (dirty.verdict) {
+      dirty.verdict = false;
       const summary = out
         ? `Surface ${kelvin(out.surfaceTemp.value)} (${celsius(out.surfaceTemp.value)}), ${WATER_TEXT[out.waterPhase.value] ?? out.waterPhase.value}, ${num(out.input.atmosphere.surfacePressure_bar)} bar.`
         : '';
       verdict.update(out?.habitability ?? null, summary);
-      renderProvenanceLine(provEl, out);
+      renderIfChanged(provEl, out ? `${out.input.mode}|${out.provenance.join('|')}` : '∅', () => renderProvenanceLine(provEl, out));
+    }
+    if (dirty.results && show('results')) {
+      dirty.results = false;
       let earth: SimulationOutput | null = null;
       if (state.compare) { try { earth = earthOutput(); } catch { earth = null; } }
-      orbit.update(out, state.compare);
       metrics.update(out, earth);
-      renderAssumptions(assumptionsEl, out, true);
-      resultBar.update(out);
     }
-    scheduleUrl();
+    if (dirty.orbit && show('orbit')) {
+      dirty.orbit = false;
+      orbit.update(out, state.compare);
+    }
+    if (dirty.model && show('model')) {
+      dirty.model = false;
+      renderIfChanged(assumptionsEl, out ? `${out.assumptions.join('|')}#${out.provenance.join('|')}` : '∅', () => renderAssumptions(assumptionsEl, out, true));
+    }
   }
 
   update();

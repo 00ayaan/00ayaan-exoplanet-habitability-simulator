@@ -4,6 +4,9 @@ import { AU, DAY, G_EARTH_STANDARD, S_EARTH, YEAR } from '../physics/constants';
 
 export const UNKNOWN = 'unknown';
 
+/** One shared formatter: toLocaleString() builds a new Intl formatter on every call, which is slow. */
+const NF = new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 });
+
 /** Significant-figure formatting with sensible switch to exponent for extremes. */
 export function num(x: number | null | undefined, sig = 3): string {
   if (x == null || !Number.isFinite(x)) return UNKNOWN;
@@ -14,7 +17,7 @@ export function num(x: number | null | undefined, sig = 3): string {
     return `${m}×10${superscript(Number(e))}`;
   }
   const p = Number(x.toPrecision(sig));
-  return p.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  return NF.format(p);
 }
 
 const SUP: Record<string, string> = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };

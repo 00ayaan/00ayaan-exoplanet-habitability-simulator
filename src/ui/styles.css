@@ -229,7 +229,7 @@ a { color: var(--sky); }
 }
 
 .group { display: grid; gap: 10px; }
-.group__head { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.group__head { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; min-height: var(--tap); }
 .group__head .badge { margin-left: 6px; }
 .inset { border: 1px solid var(--line); border-radius: 10px; background: var(--inset); padding: 12px; display: grid; gap: 8px; }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -251,10 +251,11 @@ a { color: var(--sky); }
 /* ---------- help popover ---------- */
 .help { display: inline-flex; }
 .help__btn {
-  display: inline-grid; place-items: center; width: 32px; height: 32px; margin: -6px -4px; padding: 0; position: relative;
+  display: inline-grid; place-items: center; width: var(--tap); height: var(--tap); margin: -8px -10px; padding: 0;
   border: 0; background: none; color: var(--label); cursor: pointer; border-radius: 50%;
 }
-.help__btn::after { content: ""; position: absolute; inset: -6px; }
+/* Where interactive controls sit directly above/below, keep the full 44 px in the row height. */
+.slider__head .help__btn, .group__head .help__btn { margin: 0 -10px; }
 .help__btn:hover, .help__btn[aria-expanded="true"] { color: var(--sky); }
 .help__pop {
   position: fixed; z-index: 50; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-2);
@@ -284,9 +285,9 @@ a { color: var(--sky); }
 /* ---------- sliders ---------- */
 .slider { display: grid; gap: 0; }
 .slider.is-disabled .range { opacity: 0.5; }
-.slider.is-unknown .range::-webkit-slider-thumb { visibility: hidden; }
-.slider.is-unknown .range::-moz-range-thumb { visibility: hidden; }
-.slider.is-unknown .range::-moz-range-progress { visibility: hidden; }
+.slider--unknown .range::-webkit-slider-thumb { visibility: hidden; }
+.slider--unknown .range::-moz-range-thumb { visibility: hidden; }
+.slider--unknown .range::-moz-range-progress { visibility: hidden; }
 .slider__head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
 .slider__label { font-size: 14px; color: var(--fg); }
 .slider__value { margin-left: auto; display: inline-flex; align-items: baseline; gap: 6px; }
@@ -315,11 +316,12 @@ a { color: var(--sky); }
 .range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--focus); }
 .ticks { position: relative; height: var(--tap); margin: 0 9px; pointer-events: none; }
 .tick {
-  position: absolute; top: 0; left: calc(var(--p) * 100%); transform: translateX(-50%); padding: 0 6px 26px; min-width: var(--tap); height: var(--tap);
+  position: absolute; top: 0; left: calc(var(--p) * 100%); transform: translateX(-50%); padding: 0 0 26px; min-width: var(--tap); height: var(--tap);
   border: 0; background: none; font: 10px/18px var(--f-mono); color: var(--label); white-space: nowrap; cursor: pointer; pointer-events: auto; text-align: center;
 }
-.tick--start { transform: translateX(-15px); text-align: left; }
-.tick--end { transform: translateX(calc(-100% + 15px)); text-align: right; }
+.tick--start { transform: translateX(-9px); text-align: left; }
+.tick--end { transform: translateX(calc(-100% + 9px)); text-align: right; }
+.tick.is-packed { transform: none; min-width: 0; }
 .tick:hover, .tick:focus-visible { color: var(--sky); }
 
 .adv { border: 1px solid var(--line); border-radius: 10px; }
@@ -385,9 +387,9 @@ a { color: var(--sky); }
 .ov__frame { max-width: 560px; margin: 0 auto; }
 .ov__svg { display: block; width: 100%; height: auto; }
 .ov__bg { fill: var(--plot); stroke: var(--line); }
-.ov__grid line { stroke: var(--grid); stroke-width: 1; }
+.ov__grid { fill: none; stroke: var(--grid); stroke-width: 1; }
 .ov__tick text { font: 10px var(--f-mono); fill: var(--label); }
-.ov__axis { font-weight: 600; }
+.ov__axis { font: 600 10px var(--f-mono); fill: var(--label); }
 .ov__hz { fill: var(--hz-fill); stroke: var(--hz-stroke); stroke-width: 1; }
 .ov__earth { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
 .ov__orbit { fill: none; stroke: var(--sky); stroke-width: 1.6; stroke-dasharray: 5 4; }

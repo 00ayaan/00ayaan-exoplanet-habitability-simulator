@@ -45,3 +45,17 @@ export function replace(el: Element, ...children: Child[]): void {
 let uid = 0;
 /** Unique id for label/aria wiring. */
 export const nextId = (prefix = 'ui'): string => `${prefix}-${++uid}`;
+
+/** Set text only when it changed (assigning textContent always rebuilds the child nodes). */
+export function setText(el: Element, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+/** Re-render a container only when `key` changed since the last render. Returns true if it ran. */
+const KEYS = new WeakMap<Element, string>();
+export function renderIfChanged(el: Element, key: string, render: () => void): boolean {
+  if (KEYS.get(el) === key) return false;
+  KEYS.set(el, key);
+  render();
+  return true;
+}

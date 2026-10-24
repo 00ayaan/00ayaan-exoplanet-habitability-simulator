@@ -12,7 +12,7 @@
  */
 import type { OrbitSample, SimulationOutput } from '../../physics/types';
 import { L_SUN } from '../../physics/constants';
-import { h, s, replace } from '../dom';
+import { h, s, replace, renderIfChanged, setText } from '../dom';
 import { auFromM, num, sEarth } from '../format';
 import { blackbodyColor } from '../starColor';
 import { habitableZoneLimits } from '../engine';
@@ -24,6 +24,10 @@ const SECONDS_PER_ORBIT = 8;
 /** Fit the HZ only while it is at most this many times the orbit's extent. */
 const MAX_FIT_RATIO = 6;
 
+function attr(el: Element, a: Record<string, string | number>): void {
+  for (const k in a) { const v = String(a[k]); if (el.getAttribute(k) !== v) el.setAttribute(k, v); }
+}
+
 function niceStep(x: number): number {
   const p = Math.pow(10, Math.floor(Math.log10(x)));
   const m = x / p;
@@ -33,6 +37,13 @@ function niceStep(x: number): number {
 export class OrbitView {
   readonly el: HTMLElement;
   private plot: SVGGElement;
+  private layers: {
+    grid: SVGPathElement; ticks: SVGGElement; tickPool: SVGTextElement[]; hz: SVGPathElement; earth: SVGPathElement; orbit: SVGPathElement;
+    apsis: SVGGElement; apsisLine: SVGLineElement; periDot: SVGCircleElement; apoDot: SVGCircleElement; ring: SVGCircleElement; star: SVGCircleElement;
+    labels: SVGGElement; periLbl: SVGTextElement; apoLbl: SVGTextElement; edge: SVGGElement;
+  };
+  private legendHz = document.createElement('span');
+  private legendOrbit = document.createElement('span');
   private planet: SVGCircleElement;
   private caption: HTMLParagraphElement;
   private legend: HTMLUListElement;
@@ -57,7 +68,22 @@ export class OrbitView {
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.playing = !reduce;
 
-    this.plot = s('g');
+    const pw = W - PL - PR, ph = H - PT - PB;
+    const L_ = {
+      grid: s('path', { class: 'ov__grid' }), ticks: s('g', { class: 'ov__tick' }), tickPool: [] as SVGTextElement[],
+      hz: s('path', { 'fill-rule': 'evenodd', class: 'ov__hz' }), earth: s('path', { class: 'ov__earth' }), orbit: s('path', { class: 'ov__orbit' }),
+      apsis: s('g'), apsisLine: s('line', { class: 'ov__apsis-line' }), periDot: s('circle', { r: 3, class: 'ov__apsis' }), apoDot: s('circle', { r: 3, class: 'ov__apsis' }),
+      ring: s('circle', { cx: PL + pw / 2, cy: PT + ph / 2, r: 11, class: 'ov__ring' }), star: s('circle', { cx: PL + pw / 2, cy: PT + ph / 2, r: 6.5, class: 'ov__star' }),
+      labels: s('g'), periLbl: s('text', { class: 'ov__lbl' }), apoLbl: s('text', { class: 'ov__lbl' }), edge: s('g'),
+    };
+    L_.apsis.append(L_.apsisLine, L_.periDot, L_.apoDot);
+    L_.labels.append(L_.periLbl, L_.apoLbl);
+    this.layers = L_;
+    this.plot = s('g', {},
+      s('rect', { x: PL, y: PT, width: pw, height: ph, class: 'ov__bg' }), L_.grid, L_.ticks,
+      s('text', { x: W - PR, y: H - 4, 'text-anchor': 'end', class: 'ov__tick ov__axis' }, 'AU'),
+      s('g', { 'clip-path': 'url(#ov-clip)' }, L_.hz, L_.earth, L_.orbit, L_.apsis, L_.ring, L_.star),
+      L_.labels, L_.edge);
     this.planet = s('circle', { class: 'ov__planet', r: 5.5 });
     const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ov__svg', role: 'img', 'aria-labelledby': 'ov-cap' },
       s('defs', {}, s('clipPath', { id: 'ov-clip' }, s('rect', { x: PL, y: PT, width: W - PL - PR, height: H - PT - PB }))),
@@ -104,13 +130,14 @@ export class OrbitView {
     this.cmpBtn.setAttribute('aria-checked', String(compare));
     if (!out || out.orbit.samples.length === 0) {
       this.samples = [];
-      replace(this.plot);
-      replace(this.legend);
+      this.plot.style.display = 'none';
+      renderIfChanged(this.legend, '∅', () => replace(this.legend));
       this.caption.textContent = 'No orbit to display.';
       this.sync();
       return;
     }
     this.samples = out.orbit.samples;
+    this.plot.style.display = '';
     const e = out.input.planet.ecc;
     const peri = auFromM(out.orbit.periapsis.value), apo = auFromM(out.orbit.apoapsis.value);
     const a = (peri + apo) / 2;
@@ -136,48 +163,55 @@ export class OrbitView {
     this.cy = PT + ph / 2;
     const xr = pw / 2 / this.scale, yr = ph / 2 / this.scale; // half-extents in AU
 
-    const nodes: SVGElement[] = [s('rect', { x: PL, y: PT, width: pw, height: ph, class: 'ov__bg' })];
-    // Grid + ticks
+    const L_ = this.layers;
+    // Grid: one path for all lines; tick labels reuse a pool of <text> nodes.
     const step = niceStep(Math.max(xr, yr) / 2.5);
-    const grid = s('g', { class: 'ov__grid' });
-    const labels = s('g', { class: 'ov__tick' });
+    let d = '';
+    const ticks: [number, number, 'middle' | 'end', string][] = [];
     for (let k = -Math.floor(xr / step); k <= Math.floor(xr / step); k++) {
       const x = this.cx + k * step * this.scale;
-      grid.append(s('line', { x1: x, y1: PT, x2: x, y2: PT + ph }));
-      labels.append(s('text', { x, y: H - PB + 14, 'text-anchor': 'middle' }, num(k * step, 2)));
+      d += `M${x.toFixed(1)},${PT}V${PT + ph}`;
+      ticks.push([x, H - PB + 14, 'middle', num(k * step, 2)]);
     }
     for (let k = -Math.floor(yr / step); k <= Math.floor(yr / step); k++) {
       const y = this.cy - k * step * this.scale;
-      grid.append(s('line', { x1: PL, y1: y, x2: PL + pw, y2: y }));
-      labels.append(s('text', { x: PL - 5, y: y + 3.5, 'text-anchor': 'end' }, num(k * step, 2)));
+      d += `M${PL},${y.toFixed(1)}H${PL + pw}`;
+      ticks.push([PL - 5, y + 3.5, 'end', num(k * step, 2)]);
     }
-    labels.append(s('text', { x: W - PR, y: H - 4, 'text-anchor': 'end', class: 'ov__axis' }, 'AU'));
-    nodes.push(grid, labels);
+    attr(L_.grid, { d });
+    while (L_.tickPool.length < ticks.length) { const t = s('text'); L_.tickPool.push(t); L_.ticks.append(t); }
+    L_.tickPool.forEach((t, i) => {
+      const tk = ticks[i];
+      t.style.display = tk ? '' : 'none';
+      if (!tk) return;
+      attr(t, { x: tk[0].toFixed(1), y: tk[1].toFixed(1), 'text-anchor': tk[2] });
+      setText(t, tk[3]);
+    });
 
-    const clipped = s('g', { 'clip-path': 'url(#ov-clip)' });
     const edge: string[] = [];
     const circ = (r: number) => `M${this.cx - r * this.scale},${this.cy}a${r * this.scale},${r * this.scale} 0 1 0 ${2 * r * this.scale},0a${r * this.scale},${r * this.scale} 0 1 0 ${-2 * r * this.scale},0`;
-    if (hzIn != null && hzOut != null) {
-      clipped.append(s('path', { d: `${circ(hzOut)}${circ(hzIn)}`, 'fill-rule': 'evenodd', class: 'ov__hz' }));
-      if (hzIn > R) edge.push(`Habitable zone (${num(hzIn)}–${num(hzOut)} AU) →`);
-    }
-    if (compare) {
-      if (1 <= R * 1.25) clipped.append(s('path', { d: circ(1), class: 'ov__earth' }));
-      if (1 > R) edge.push('Earth orbit (1 AU) →');
-    }
+    const hasHz = hzIn != null && hzOut != null;
+    attr(L_.hz, { d: hasHz ? `${circ(hzOut!)}${circ(hzIn!)}` : '' });
+    if (hasHz && hzIn! > R) edge.push(`Habitable zone (${num(hzIn)}–${num(hzOut)} AU) →`);
+    attr(L_.earth, { d: compare && 1 <= R * 1.25 ? circ(1) : '' });
+    if (compare && 1 > R) edge.push('Earth orbit (1 AU) →');
     // Planet orbit: true ellipse from samples, star at the focus (origin).
-    const pts = this.samples.map((p) => this.xy(auFromM(p.x_m), auFromM(p.y_m)));
-    clipped.append(s('path', { d: `M${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`, class: 'ov__orbit' }));
-    const apsisLabels: SVGElement[] = [];
-    if (e > 1e-4) {
+    let od = '';
+    for (const p of this.samples) {
+      const [x, y] = this.xy(auFromM(p.x_m), auFromM(p.y_m));
+      od += `${od ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }
+    attr(L_.orbit, { d: `${od}Z` });
+    const ecc = e > 1e-4;
+    L_.apsis.style.display = L_.labels.style.display = ecc ? '' : 'none';
+    if (ecc) {
       const [px, py] = this.xy(peri, 0), [ax] = this.xy(-apo, 0);
-      clipped.append(
-        s('line', { x1: ax, y1: py, x2: px, y2: py, class: 'ov__apsis-line' }),
-        s('circle', { cx: px, cy: py, r: 3, class: 'ov__apsis' }),
-        s('circle', { cx: ax, cy: py, r: 3, class: 'ov__apsis' }));
+      attr(L_.apsisLine, { x1: ax, y1: py, x2: px, y2: py });
+      attr(L_.periDot, { cx: px, cy: py });
+      attr(L_.apoDot, { cx: ax, cy: py });
       // Labels sit outside the clip group and are kept inside the plot: each goes on
       // the outer side of its marker if it fits there, else flips to the inner side.
-      const lbl = (text: string, x: number, outward: 1 | -1, y: number) => {
+      const lbl = (t: SVGTextElement, text: string, x: number, outward: 1 | -1, y: number) => {
         const w = text.length * 6.2;
         const left = PL + 3, right = PL + pw - 3;
         let anchor: 'start' | 'end', tx: number;
@@ -185,27 +219,31 @@ export class OrbitView {
         else if (x - 5 - w >= left) { anchor = 'end'; tx = x - 5; } else { anchor = 'start'; tx = Math.max(x + 5, left); }
         if (anchor === 'end' && tx - w < left) { anchor = 'start'; tx = left; }
         if (anchor === 'start' && tx + w > right) { anchor = 'end'; tx = right; }
-        return s('text', { x: tx, y: Math.min(Math.max(y, PT + 12), PT + ph - 4), 'text-anchor': anchor, class: 'ov__lbl' }, text);
+        attr(t, { x: tx.toFixed(1), y: Math.min(Math.max(y, PT + 12), PT + ph - 4).toFixed(1), 'text-anchor': anchor });
+        setText(t, text);
       };
-      apsisLabels.push(lbl(`Periapsis ${num(peri)} AU`, px, 1, py - 8), lbl(`Apoapsis ${num(apo)} AU`, ax, -1, py + 16));
+      lbl(L_.periLbl, `Periapsis ${num(peri)} AU`, px, 1, py - 8);
+      lbl(L_.apoLbl, `Apoapsis ${num(apo)} AU`, ax, -1, py + 16);
     }
     const color = blackbodyColor(out.input.star.teff_K);
-    clipped.append(
-      s('circle', { cx: this.cx, cy: this.cy, r: 11, fill: color, class: 'ov__ring' }),
-      s('circle', { cx: this.cx, cy: this.cy, r: 6.5, fill: color, class: 'ov__star' }));
-    nodes.push(clipped, ...apsisLabels);
-    edge.forEach((t, i) => nodes.push(s('text', { x: PL + pw - 6, y: PT + 14 + i * 14, 'text-anchor': 'end', class: 'ov__edge' }, t)));
-    replace(this.plot, ...nodes);
+    attr(L_.ring, { fill: color });
+    attr(L_.star, { fill: color });
+    renderIfChanged(L_.edge, edge.join('|'), () => replace(L_.edge,
+      ...edge.map((t, i) => s('text', { x: PL + pw - 6, y: PT + 14 + i * 14, 'text-anchor': 'end', class: 'ov__edge' }, t))));
 
+    // Legend: rebuilt only when its structure changes; the orbit size updates in place.
     const sw = (cls: string) => h('span', { class: `ov__sw ${cls}`, 'aria-hidden': 'true' });
-    replace(this.legend,
-      hzIn != null && hzOut != null ? h('li', {}, sw('sw--hz'), `Habitable zone (${num(hzIn)}–${num(hzOut)} AU)`) : h('li', {}, 'Habitable zone unavailable for this star'),
-      h('li', {}, sw('sw--orbit'), `Planet orbit (${num(a)} AU)`),
+    const hzText = hasHz ? `Habitable zone (${num(hzIn)}–${num(hzOut)} AU)` : 'Habitable zone unavailable for this star';
+    renderIfChanged(this.legend, `${hasHz}|${compare}|${color}`, () => replace(this.legend,
+      h('li', {}, hasHz ? sw('sw--hz') : null, this.legendHz),
+      h('li', {}, sw('sw--orbit'), this.legendOrbit),
       compare ? h('li', {}, sw('sw--earth'), 'Earth orbit (1 AU)') : null,
       h('li', {}, h('span', { class: 'ov__sw sw--star', style: `background:${color}`, 'aria-hidden': 'true' }), 'Star'),
-      h('li', {}, sw('sw--planet'), 'Planet'));
+      h('li', {}, sw('sw--planet'), 'Planet')));
+    setText(this.legendHz, hzText);
+    setText(this.legendOrbit, `Planet orbit (${num(a)} AU)`);
 
-    this.caption.textContent = `${e > 1e-4 ? `Elliptical orbit, eccentricity ${num(e, 2)}, periapsis ${num(peri)} AU, apoapsis ${num(apo)} AU, star at one focus.` : `Circular orbit of radius ${num(a)} AU.`}${hzIn != null && hzOut != null ? ` Habitable zone ${num(hzIn)} to ${num(hzOut)} AU.` : ''}`;
+    setText(this.caption, `${e > 1e-4 ? `Elliptical orbit, eccentricity ${num(e, 2)}, periapsis ${num(peri)} AU, apoapsis ${num(apo)} AU, star at one focus.` : `Circular orbit of radius ${num(a)} AU.`}${hzIn != null && hzOut != null ? ` Habitable zone ${num(hzIn)} to ${num(hzOut)} AU.` : ''}`);
 
     this.lastIdx = -1;
     this.renderFrame();

@@ -87,7 +87,7 @@ export class Slider {
     const ticks = (cfg.ticks ?? []).map((t) => {
       const pct = this.toPos(t.value) / this.steps;
       const edge = pct < 0.08 ? 'start' : pct > 0.92 ? 'end' : 'mid';
-      const b = h('button', { type: 'button', class: `tick tick--${edge}`, style: `--p:${pct}`, 'aria-label': `Set ${cfg.label} to ${t.label}` }, t.label);
+      const b = h('button', { type: 'button', class: `tick tick--${edge}`, style: `--p:${pct}`, 'aria-label': `Set ${cfg.label} to ${t.label}`, 'data-p': pct, 'data-edge': edge }, h('span', {}, t.label));
       b.addEventListener('click', () => {
         if (this.disabled) return;
         this.set(t.value, true);
@@ -103,8 +103,35 @@ export class Slider {
         this.badgeEl,
         h('span', { class: 'slider__value' }, valueEl, cfg.unit ? h('span', { class: 'slider__unit' }, cfg.unit) : null, this.extraEl)),
       this.range,
-      ticks.length ? h('div', { class: 'ticks' }, ...ticks) : null,
+      ticks.length ? this.tickRow(ticks) : null,
       this.err);
+  }
+
+  /**
+   * Tick buttons are ≥ 44 px wide. On narrow screens neighbours could overlap, so after
+   * layout (and on resize only — never per slider step) they are packed left-to-right
+   * without overlap, each staying as close to its true position as the row allows.
+   */
+  private tickRow(ticks: HTMLButtonElement[]): HTMLDivElement {
+    const row = h('div', { class: 'ticks' }, ...ticks);
+    const SLACK = 9; // the row is inset by the thumb radius; labels may use that margin
+    const pack = () => {
+      const W = row.clientWidth;
+      if (!W) return;
+      const items = ticks.map((b) => {
+        const w = Math.max(44, (b.firstElementChild as HTMLElement).offsetWidth);
+        const x = Number(b.dataset.p) * W, edge = b.dataset.edge;
+        const left = edge === 'start' ? x - SLACK : edge === 'end' ? x + SLACK - w : x - w / 2;
+        return { b, w, left };
+      });
+      let min = -SLACK;
+      for (const it of items) { it.left = Math.max(it.left, min); min = it.left + it.w; }
+      let max = W + SLACK;
+      for (let i = items.length - 1; i >= 0; i--) { const it = items[i]!; it.left = Math.min(it.left, max - it.w); max = it.left; }
+      for (const it of items) { it.b.style.left = `${it.left.toFixed(1)}px`; it.b.style.width = `${it.w}px`; it.b.classList.add('is-packed'); }
+    };
+    if (typeof ResizeObserver === 'function') new ResizeObserver(pack).observe(row);
+    return row;
   }
 
   private toPos(v: number): number {
@@ -165,7 +192,7 @@ export class Slider {
     this.show(v);
     const pos = this.toPos(v);
     if (moveThumb && this.range.value !== String(pos)) this.range.value = String(pos);
-    this.el.classList.remove('is-unknown');
+    this.el.classList.remove('slider--unknown');
     this.range.style.setProperty('--pct', `${(Number(this.range.value) / this.steps) * 100}%`);
   }
 
@@ -186,7 +213,7 @@ export class Slider {
       this.show(NaN);
       this.range.value = '0';
       this.range.style.setProperty('--pct', '0%');
-      this.el.classList.add('is-unknown');
+      this.el.classList.add('slider--unknown');
       return;
     }
     this.set(v, true);
