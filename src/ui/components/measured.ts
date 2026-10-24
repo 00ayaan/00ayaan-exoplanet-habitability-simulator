@@ -32,7 +32,7 @@ export function renderStarStats(container: HTMLElement, star: Star, tag: SourceT
       col('T★', `${Math.round(star.teff_K).toLocaleString('en-US')} K`, real ? pm(u.teff_K) : null),
       col('R★', `${num(star.radius_Rsun)} R☉`, real ? pm(u.radius_Rsun) : null),
       col('M★', `${num(star.mass_Msun)} M☉`, real ? pm(u.mass_Msun) : null)),
-    h('p', { class: 'mono-note' }, `L★ ≈ ${num(L)} L☉ (${how})`));
+    h('p', { class: 'mono-note' }, `L★ ≈ ${num(L)} L☉${real && star.luminosity_Lsun != null && pm(u.luminosity_Lsun) ? ' ' + pm(u.luminosity_Lsun) : ''} (${how})`));
 }
 
 const row = (k: string, v: string) => [h('dt', {}, k), h('dd', { class: v === 'unknown' ? 'is-unknown' : '' }, v)];

@@ -9,7 +9,6 @@ import type { SourceTag } from '../state';
 import { badge, setBadge } from './badge';
 import { Help } from './help';
 
-const STEPS = 1000;
 
 export interface SliderConfig {
   label: string;
@@ -17,6 +16,8 @@ export interface SliderConfig {
   scale: 'log' | 'linear';
   min: number;
   max: number;
+  /** Range positions (default 1000). Chosen so one arrow-key press changes the displayed value by one display unit. */
+  steps?: number;
   /** Displayed number for a value (e.g. greenhouse 0.78 → 78). Default identity. */
   toDisplay?: (v: number) => number;
   fromDisplay?: (d: number) => number;
@@ -44,14 +45,16 @@ export class Slider {
   private value = NaN;
   private disabled = false;
   private toD: (v: number) => number;
+  private steps: number;
   private fromD: (d: number) => number;
 
   constructor(private cfg: SliderConfig) {
+    this.steps = cfg.steps ?? 1000;
     this.toD = cfg.toDisplay ?? ((v) => v);
     this.fromD = cfg.fromDisplay ?? ((d) => d);
     const id = nextId('slider');
     const errId = `${id}-err`;
-    this.range = h('input', { type: 'range', id, min: 0, max: STEPS, step: 1, class: `range range--${cfg.fill ?? 'sky'}` });
+    this.range = h('input', { type: 'range', id, min: 0, max: this.steps, step: 1, class: `range range--${cfg.fill ?? 'sky'}` });
     this.range.addEventListener('input', () => {
       let v = this.fromPos(Number(this.range.value));
       if (cfg.quantize) v = cfg.quantize(v);
@@ -82,7 +85,7 @@ export class Slider {
     this.badgeEl = badge('assumed');
 
     const ticks = (cfg.ticks ?? []).map((t) => {
-      const pct = this.toPos(t.value) / STEPS;
+      const pct = this.toPos(t.value) / this.steps;
       const edge = pct < 0.08 ? 'start' : pct > 0.92 ? 'end' : 'mid';
       const b = h('button', { type: 'button', class: `tick tick--${edge}`, style: `--p:${pct}`, 'aria-label': `Set ${cfg.label} to ${t.label}` }, t.label);
       b.addEventListener('click', () => {
@@ -108,14 +111,14 @@ export class Slider {
     const { min, max, scale } = this.cfg;
     const c = Math.min(max, Math.max(min, v));
     const f = scale === 'log' ? Math.log(c / min) / Math.log(max / min) : (c - min) / (max - min);
-    return Math.round(f * STEPS);
+    return Math.round(f * this.steps);
   }
 
   private fromPos(p: number): number {
     const { min, max, scale } = this.cfg;
-    const f = p / STEPS;
+    const f = p / this.steps;
     const v = scale === 'log' ? min * Math.pow(max / min, f) : min + f * (max - min);
-    return Number(v.toPrecision(4));
+    return Number(v.toPrecision(scale === 'log' ? 4 : 6));
   }
 
   private commit(text: string): boolean {
@@ -162,7 +165,8 @@ export class Slider {
     this.show(v);
     const pos = this.toPos(v);
     if (moveThumb && this.range.value !== String(pos)) this.range.value = String(pos);
-    this.range.style.setProperty('--pct', `${(Number(this.range.value) / STEPS) * 100}%`);
+    this.el.classList.remove('is-unknown');
+    this.range.style.setProperty('--pct', `${(Number(this.range.value) / this.steps) * 100}%`);
   }
 
   /** Sync from state. Values outside the slider range (real planets) are shown as-is; null = unknown. */
@@ -176,7 +180,15 @@ export class Slider {
     }
     const v = value ?? NaN;
     if (v === this.value || (Number.isNaN(v) && Number.isNaN(this.value) && this.box?.value === 'unknown')) return;
-    if (Number.isNaN(v)) { this.value = NaN; this.show(NaN); return; }
+    if (Number.isNaN(v)) {
+      // Unknown: no thumb, empty track, "unknown" in the box.
+      this.value = NaN;
+      this.show(NaN);
+      this.range.value = '0';
+      this.range.style.setProperty('--pct', '0%');
+      this.el.classList.add('is-unknown');
+      return;
+    }
     this.set(v, true);
   }
 }

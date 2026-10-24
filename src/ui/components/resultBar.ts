@@ -13,7 +13,7 @@ export class ResultBar {
   readonly el: HTMLButtonElement;
 
   constructor(onOpen: () => void) {
-    this.el = h('button', { type: 'button', class: 'resultbar', 'aria-label': 'Current result: open Results' });
+    this.el = h('button', { type: 'button', class: 'resultbar', 'aria-label': 'Open Results' });
     this.el.addEventListener('click', onOpen);
   }
 
@@ -22,6 +22,8 @@ export class ResultBar {
     this.el.hidden = false;
     const b = STATUS_BADGE[out.habitability.status];
     this.el.dataset.tone = b.cls;
+    const t = out.surfaceTemp.value;
+    this.el.setAttribute('aria-label', `${out.habitability.status}, ${Number.isFinite(t) ? Math.round(t) + ' K' : 'temperature unknown'}, ${waterPhaseLabel(out.waterPhase.value).toLowerCase()} — open Results`);
     replace(this.el,
       h('span', { class: 'resultbar__status' }, icon(b.icon, 18), out.habitability.status),
       h('span', { class: 'resultbar__vals' },

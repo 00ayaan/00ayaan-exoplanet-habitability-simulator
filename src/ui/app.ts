@@ -160,7 +160,10 @@ export function mountApp(root: HTMLElement): void {
   };
   const share = async () => {
     writeUrl();
-    const url = location.href;
+    // Shared links carry the scenario only; the phone tab (#hash) stays local.
+    const u = new URL(location.href);
+    u.hash = '';
+    const url = u.href;
     const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
     if (typeof nav.share === 'function') {
       try { await nav.share({ title: document.title, text: `${scenarioName(state)} in the Exoplanet Habitability Simulator`, url }); return; }
@@ -186,6 +189,14 @@ export function mountApp(root: HTMLElement): void {
     { value: 'hypothetical', label: 'Hypothetical' }, { value: 'preset', label: 'Known planet' }, { value: 'nasa', label: 'NASA search' },
   ], setScenario);
   const bannerEl = h('div', { class: 'banner-slot' });
+  let notice: string | null = null;
+  const noticeEl = h('div', { class: 'banner-slot' });
+  const renderNotice = () => {
+    if (!notice) { replace(noticeEl); return; }
+    const dismiss = h('button', { type: 'button', class: 'btn btn--outline banner__x', 'aria-label': 'Dismiss notice' }, 'Dismiss');
+    dismiss.addEventListener('click', () => { notice = null; renderNotice(); });
+    replace(noticeEl, h('div', { class: 'banner banner--sky banner--action', role: 'status' }, icon('info', 16), h('span', {}, notice), dismiss));
+  };
 
   const hypoBody = h('p', { class: 'muted small' }, 'Build a world from scratch: pick a star class below and drag the sliders.');
   const knownSelect = h('select', { class: 'select', id: 'known-select' });
@@ -227,26 +238,26 @@ export function mountApp(root: HTMLElement): void {
     onInput: (v) => setControl('pressure_bar', v),
   });
   const gSlider = new Slider({
-    label: 'Greenhouse strength', unit: '%', scale: 'linear', min: 0, max: 1, fill: 'amber', format: (d) => String(Math.round(d)),
+    label: 'Greenhouse strength', unit: '%', scale: 'linear', min: 0, max: 1, steps: 100, fill: 'amber', format: (d) => String(Math.round(d)),
     toDisplay: (v) => v * 100, fromDisplay: (d) => d / 100, quantize: quantizeGreenhouse, extra: (v) => `ε=${num(v, 2)}`,
     ticks: [{ value: 0, label: '0 Airless, Mars' }, { value: EARTH_GREENHOUSE, label: 'Earth' }, { value: 1, label: '100 Venus' }],
     help: 'How strongly the atmosphere traps heat. 0% = no greenhouse effect, 100% = the strongest this simple one-layer model allows.',
     onInput: (v) => setControl('greenhouse', v),
   });
   const albSlider = new Slider({
-    label: 'Bond albedo A', unit: '', scale: 'linear', min: 0, max: 1, fill: 'slate', entry: 'readout', format: (d) => d.toFixed(2),
+    label: 'Bond albedo A', unit: '', scale: 'linear', min: 0, max: 1, steps: 100, fill: 'slate', entry: 'readout', format: (d) => d.toFixed(2),
     quantize: (v) => Math.round(v * 100) / 100, ticks: [{ value: 0.3, label: 'Earth' }, { value: 0.76, label: 'Venus' }],
     help: 'How much starlight the planet reflects instead of absorbing. 0 = absorbs everything, 1 = reflects everything. Never measured for exoplanets, so it is always an assumption there.',
     onInput: (v) => setControl('albedo', v),
   });
   const mSlider = new Slider({
-    label: 'Planet mass', unit: 'M⊕', scale: 'log', min: LIMITS.mass_Mearth[0], max: LIMITS.mass_Mearth[1], format: box(3),
+    label: 'Planet mass', unit: 'M⊕', scale: 'log', steps: 530, min: LIMITS.mass_Mearth[0], max: LIMITS.mass_Mearth[1], format: box(3),
     ticks: [{ value: 1, label: 'Earth' }],
     help: 'Planet mass compared with Earth. With the radius it sets surface gravity; it barely changes the orbital period and does not change temperature here.',
     onInput: (v) => setControl('mass_Mearth', v),
   });
   const rSlider = new Slider({
-    label: 'Planet radius', unit: 'R⊕', scale: 'log', min: LIMITS.radius_Rearth[0], max: LIMITS.radius_Rearth[1], format: box(3),
+    label: 'Planet radius', unit: 'R⊕', scale: 'log', steps: 260, min: LIMITS.radius_Rearth[0], max: LIMITS.radius_Rearth[1], format: box(3),
     ticks: [{ value: 1, label: 'Earth' }],
     help: 'Planet size compared with Earth. Bigger planets feel stronger tides; with the mass it sets surface gravity.',
     onInput: (v) => setControl('radius_Rearth', v),
@@ -264,6 +275,7 @@ export function mountApp(root: HTMLElement): void {
     nameEl,
     scenarioTabs.el,
     bannerEl,
+    noticeEl,
     hypoBody, knownBody, picker.el,
     modChip,
     h('div', { class: 'group' },
@@ -466,6 +478,14 @@ export function mountApp(root: HTMLElement): void {
           state.selectedId = entry.id;
           state.real = { ...realBaseline(entry), ...pr.overrides };
           recomputeModified(state);
+        } else if (pr.planetId && cat.entries.length) {
+          const fallback = (pr.scenario === 'preset' ? featured()[0] : undefined) ?? cat.entries[0]!;
+          state.selectedId = fallback.id;
+          state.real = realBaseline(fallback);
+          state.modified.clear();
+          const shown = pr.planetId.length > 60 ? `${pr.planetId.slice(0, 57)}…` : pr.planetId;
+          notice = `Planet ‘${shown}’ was not found in this snapshot — showing ${fallback.planet.name} instead.`;
+          renderNotice();
         }
       }
       scheduleUpdate();

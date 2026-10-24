@@ -1,6 +1,7 @@
 /**
- * NASA search: a search box over the catalog snapshot. Results appear only
- * after typing (radio rows, so it stays a single accessible choice).
+ * NASA search: a search box over the catalog snapshot with a list of planets
+ * (first 50 by name until you type; the selected planet is always listed).
+ * Radio rows, so it stays a single accessible choice.
  */
 import type { Catalog } from '../../physics/types';
 import { h, nextId, replace } from '../dom';
@@ -22,6 +23,7 @@ export class PlanetPicker {
   private list: HTMLDivElement;
   private meta: HTMLParagraphElement;
   private count: HTMLParagraphElement;
+  private more: HTMLParagraphElement;
   private name = nextId('planet');
   private lastKey = '';
 
@@ -39,10 +41,11 @@ export class PlanetPicker {
     });
     this.meta = h('p', { class: 'mono-note' });
     this.count = h('p', { class: 'visually-hidden', 'aria-live': 'polite' });
+    this.more = h('p', { class: 'mono-note', 'aria-hidden': 'true' });
     this.el = h('div', { class: 'picker' },
       h('label', { for: id, class: 'visually-hidden' }, 'Search NASA Exoplanet Archive snapshot'),
       h('div', { class: 'field field--search' }, icon('search', 16), this.search),
-      this.meta, this.count, this.list);
+      this.meta, this.count, this.list, this.more);
   }
 
   update(p: PlanetPickerProps): void {
@@ -57,12 +60,17 @@ export class PlanetPicker {
     this.lastKey = key;
 
     const q = p.filter.trim().toLowerCase();
-    if (!q) { replace(this.list); this.count.textContent = ''; return; }
-    const matches = entries.filter((e) => e.planet.name.toLowerCase().includes(q) || e.star.name.toLowerCase().includes(q));
+    const sorted = [...entries].sort((a, b) => a.planet.name.localeCompare(b.planet.name, 'en', { numeric: true }));
+    const matches = q ? sorted.filter((e) => e.planet.name.toLowerCase().includes(q) || e.star.name.toLowerCase().includes(q)) : sorted;
     const shown = matches.slice(0, MAX_ROWS);
-    this.count.textContent = matches.length > shown.length
-      ? `Showing ${shown.length} of ${matches.length} matches.`
-      : `${matches.length} match${matches.length === 1 ? '' : 'es'}`;
+    // Always keep the selected planet in the list, even past the limit.
+    const sel = entries.find((e) => e.id === p.selectedId);
+    if (sel && !shown.includes(sel) && matches.includes(sel)) shown.unshift(sel);
+    const more = matches.length > shown.length;
+    this.count.textContent = !entries.length ? '' : more
+      ? `Showing ${shown.length} of ${matches.length}${q ? ' matches' : ''} — type to search`
+      : q ? `${matches.length} match${matches.length === 1 ? '' : 'es'}` : '';
+    this.more.textContent = this.count.textContent;
     replace(this.list, ...shown.map((e) => {
       const input = h('input', { type: 'radio', name: this.name, value: e.id, class: 'visually-hidden' });
       input.checked = e.id === p.selectedId;

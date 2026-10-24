@@ -4,7 +4,7 @@
  * Registered from src/main.ts in production builds only.
  * Bump VERSION to drop old caches after a deploy that changes the shell.
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `ehs-shell-${VERSION}`;
 const DATA = `ehs-data-${VERSION}`;
 const PRECACHE = ['./', './index.html', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png'];
@@ -31,9 +31,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(staleWhileRevalidate(req));
     return;
   }
-  // Navigations (any ?query = shared scenario): network first so a new deploy's index.html (with new hashed assets) is picked up.
+  // Navigations (any ?query = a shared scenario): NETWORK FIRST, revalidating past the HTTP
+  // cache, so online users always get the latest shell after a redeploy; the cached
+  // index.html is only the offline fallback.
   if (req.mode === 'navigate') {
-    event.respondWith(fetch(req).then((res) => { putCopy(SHELL, './index.html', res); return res; }).catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('./index.html'))));
+    event.respondWith(
+      fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
+        .then((res) => { if (res.ok) putCopy(SHELL, './index.html', res); return res; })
+        .catch(() => caches.match('./index.html').then((r) => r || caches.match('./'))),
+    );
     return;
   }
   event.respondWith(cacheFirst(req));

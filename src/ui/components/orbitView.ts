@@ -168,20 +168,32 @@ export class OrbitView {
     // Planet orbit: true ellipse from samples, star at the focus (origin).
     const pts = this.samples.map((p) => this.xy(auFromM(p.x_m), auFromM(p.y_m)));
     clipped.append(s('path', { d: `M${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`, class: 'ov__orbit' }));
+    const apsisLabels: SVGElement[] = [];
     if (e > 1e-4) {
       const [px, py] = this.xy(peri, 0), [ax] = this.xy(-apo, 0);
       clipped.append(
         s('line', { x1: ax, y1: py, x2: px, y2: py, class: 'ov__apsis-line' }),
         s('circle', { cx: px, cy: py, r: 3, class: 'ov__apsis' }),
-        s('circle', { cx: ax, cy: py, r: 3, class: 'ov__apsis' }),
-        s('text', { x: Math.min(px + 4, PL + pw - 2), y: py - 8, 'text-anchor': px + 60 > PL + pw ? 'end' : 'start', class: 'ov__lbl' }, `Periapsis ${num(peri)} AU`),
-        s('text', { x: Math.max(ax - 4, PL + 2), y: py + 16, 'text-anchor': ax - 60 < PL ? 'start' : 'end', class: 'ov__lbl' }, `Apoapsis ${num(apo)} AU`));
+        s('circle', { cx: ax, cy: py, r: 3, class: 'ov__apsis' }));
+      // Labels sit outside the clip group and are kept inside the plot: each goes on
+      // the outer side of its marker if it fits there, else flips to the inner side.
+      const lbl = (text: string, x: number, outward: 1 | -1, y: number) => {
+        const w = text.length * 6.2;
+        const left = PL + 3, right = PL + pw - 3;
+        let anchor: 'start' | 'end', tx: number;
+        if (outward === 1) { if (x + 5 + w <= right) { anchor = 'start'; tx = x + 5; } else { anchor = 'end'; tx = Math.min(x - 5, right); } }
+        else if (x - 5 - w >= left) { anchor = 'end'; tx = x - 5; } else { anchor = 'start'; tx = Math.max(x + 5, left); }
+        if (anchor === 'end' && tx - w < left) { anchor = 'start'; tx = left; }
+        if (anchor === 'start' && tx + w > right) { anchor = 'end'; tx = right; }
+        return s('text', { x: tx, y: Math.min(Math.max(y, PT + 12), PT + ph - 4), 'text-anchor': anchor, class: 'ov__lbl' }, text);
+      };
+      apsisLabels.push(lbl(`Periapsis ${num(peri)} AU`, px, 1, py - 8), lbl(`Apoapsis ${num(apo)} AU`, ax, -1, py + 16));
     }
     const color = blackbodyColor(out.input.star.teff_K);
     clipped.append(
       s('circle', { cx: this.cx, cy: this.cy, r: 11, fill: color, class: 'ov__ring' }),
       s('circle', { cx: this.cx, cy: this.cy, r: 6.5, fill: color, class: 'ov__star' }));
-    nodes.push(clipped);
+    nodes.push(clipped, ...apsisLabels);
     edge.forEach((t, i) => nodes.push(s('text', { x: PL + pw - 6, y: PT + 14 + i * 14, 'text-anchor': 'end', class: 'ov__edge' }, t)));
     replace(this.plot, ...nodes);
 
